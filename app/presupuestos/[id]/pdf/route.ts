@@ -156,7 +156,7 @@ doc
   .font("Helvetica-Bold")
   .fontSize(10)
   .fillColor("black")
-  .text(t.companyData, 350, 130, {
+  .text(t.companyData, 320, 130, {
     width: 205,
     align: "right",
   });
@@ -339,14 +339,18 @@ empresaLines.forEach((line, i) => {
    */
   if (presupuesto.notas) {
     const notasTop = summaryTop + 60;
+    const notasLimpias = presupuesto.notas
+    .replace(/\r\n/g, "\n")  // Windows -> Unix
+    .replace(/\r/g, "")      // remove CR que vira "Ð"
+    .replace(/\u00D0/g, ""); // fallback: remove "Ð" se já tiver vindo gravado
+
     doc
       .fontSize(10)
       .fillColor("black")
       .text(`${t.notes}:`, 40, notasTop)
       .fontSize(9)
-      .text(presupuesto.notas, 40, notasTop + 12, {
-        width: 515,
-      });
+      .text(notasLimpias, 40, notasTop + 12, { width: 515 });
+      
   }
 
   doc.end();
