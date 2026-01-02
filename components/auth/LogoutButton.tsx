@@ -7,10 +7,11 @@ export default function LogoutButton() {
   return (
     <Button
       variant="outline"
-      size="sm"
       onClick={() => signOut({ callbackUrl: "/login" })}
+      aria-label="Cerrar sesión"
+      title="Cerrar sesión"
     >
-      Sair
+      Cerrar sesión
     </Button>
   );
 }

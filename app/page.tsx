@@ -18,7 +18,7 @@ export default async function Home() {
             <div className="leading-tight">
               <div className="font-semibold text-slate-900">Nexo Invoicer</div>
               <div className="text-xs text-slate-500">
-                Facturas & presupuestos — multi-workspace
+                Facturas y presupuestos — multi-workspace
               </div>
             </div>
           </div>
@@ -27,7 +27,7 @@ export default async function Home() {
             {isLoggedIn ? (
               <>
                 <div className="hidden sm:block text-xs text-slate-500">
-                  Logado como{" "}
+                  Sesión iniciada como{" "}
                   <span className="font-medium text-slate-700">
                     {session?.user?.email}
                   </span>
@@ -36,7 +36,7 @@ export default async function Home() {
                   href="/dashboard"
                   className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800"
                 >
-                  Ir ao painel
+                  Ir al panel
                 </Link>
               </>
             ) : (
@@ -56,7 +56,7 @@ export default async function Home() {
         <div className="grid gap-10 md:grid-cols-2 md:items-center">
           <div>
             <p className="inline-flex items-center rounded-full border bg-white px-3 py-1 text-xs font-medium text-slate-600">
-              SaaS en Vercel • Neon + Prisma • PDFs en 1 click
+              SaaS en Vercel • Neon + Prisma • PDFs en 1 clic
             </p>
 
             <h1 className="mt-4 text-4xl font-bold tracking-tight text-slate-900 sm:text-5xl">
@@ -106,49 +106,47 @@ export default async function Home() {
             </div>
 
             <div className="mt-6 text-xs text-slate-500">
-              Dica: configure sua empresa e logo em{" "}
-              <span className="font-medium">Ajustes</span> para aparecerem nos
-              PDFs.
+              Consejo: configura tu empresa y tu logo en{" "}
+              <span className="font-medium">Ajustes</span> para que aparezcan en
+              los PDFs.
             </div>
           </div>
 
           {/* Card */}
           <div className="rounded-2xl border bg-white p-6 shadow-sm">
             <div className="text-sm font-semibold text-slate-900">
-              Estado do sistema
+              Estado del sistema
             </div>
 
             <div className="mt-2 text-sm text-slate-600">
               {isLoggedIn ? (
-                <>
-                  ✅ Você está logado. Pode acessar o painel e gerar PDFs.
-                </>
+                <>✅ Has iniciado sesión. Puedes acceder al panel y generar PDFs.</>
               ) : (
-                <>🔒 Acesso protegido. Faça login para usar o sistema.</>
+                <>🔒 Acceso protegido. Inicia sesión para usar el sistema.</>
               )}
             </div>
 
             <div className="mt-6 grid gap-3">
               <Feature
                 title="Multi-tenant (workspaces)"
-                desc="Cada dado isolado por workspaceId."
+                desc="Cada dato aislado por workspaceId."
               />
               <Feature
-                title="Logo em Supabase Storage"
-                desc="Sem filesystem. Compatível com Vercel."
+                title="Logo en Supabase Storage"
+                desc="Sin filesystem. Compatible con Vercel."
               />
               <Feature
-                title="PDFs com numeração"
+                title="PDFs con numeración"
                 desc="F-YYYY-000X / P-YYYY-000X, ES/CA."
               />
             </div>
 
             <div className="mt-6 rounded-xl bg-slate-50 p-4">
               <div className="text-xs font-semibold text-slate-700">
-                Próximo passo
+                Próximo paso
               </div>
               <div className="mt-1 text-sm text-slate-600">
-                Suporte e relatórios para contador (em seguida).
+                Soporte e informes para el contador (a continuación).
               </div>
             </div>
           </div>
