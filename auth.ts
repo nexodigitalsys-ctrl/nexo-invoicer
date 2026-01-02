@@ -1,4 +1,4 @@
-// auth.ts (raiz do projeto)
+// auth.ts
 import type { AuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 
@@ -11,7 +11,7 @@ export const authOptions: AuthOptions = {
       name: "Credentials",
       credentials: {
         email: { label: "Email", type: "text" },
-        password: { label: "Senha", type: "password" },
+        password: { label: "Contraseña", type: "password" },
       },
       async authorize(credentials) {
         const email = credentials?.email?.trim();
@@ -19,7 +19,7 @@ export const authOptions: AuthOptions = {
 
         if (!email || !password) return null;
 
-        // ✅ ADMIN (mantém como está)
+        // ✅ ADMIN (você)
         if (
           email === process.env.ADMIN_EMAIL &&
           password === process.env.ADMIN_PASSWORD
@@ -29,11 +29,11 @@ export const authOptions: AuthOptions = {
             name: "Admin",
             email,
             role: "admin",
-            workspaceId: null, // admin usa cookie/workspaces
+            workspaceId: null, // admin escolhe via cookie (/workspaces)
           } as any;
         }
 
-        // ✅ CLAUDINEI (novo)
+        // ✅ CLAUDINEI (cliente travado em 1 workspace)
         if (
           email === process.env.CLAUDINEI_EMAIL &&
           password === process.env.CLAUDINEI_PASSWORD
@@ -43,7 +43,7 @@ export const authOptions: AuthOptions = {
             name: "Claudinei",
             email,
             role: "client",
-            workspaceId: Number(process.env.CLAUDINEI_WORKSPACE_ID || 1), // ✅ trava no workspace
+            workspaceId: Number(process.env.CLAUDINEI_WORKSPACE_ID), // ex: 1
           } as any;
         }
 
@@ -54,7 +54,6 @@ export const authOptions: AuthOptions = {
 
   callbacks: {
     async jwt({ token, user }) {
-      // no login inicial, "user" vem do authorize()
       if (user) {
         token.role = (user as any).role ?? "client";
         token.workspaceId = (user as any).workspaceId ?? null;
@@ -63,7 +62,6 @@ export const authOptions: AuthOptions = {
     },
 
     async session({ session, token }) {
-      // expõe no session.user
       (session.user as any).role = token.role ?? "client";
       (session.user as any).workspaceId = token.workspaceId ?? null;
       return session;

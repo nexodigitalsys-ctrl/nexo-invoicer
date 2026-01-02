@@ -127,82 +127,103 @@ if (logoBuffer) {
   doc.fontSize(18).text(empresaNombre, 50, 60);
 }
 
-  /*
-   * BLOCO "Datos del cliente" / "Datos de la empresa" (multi-idioma)
-   */
-  doc
-    .font("Helvetica-Bold")
-    .fontSize(12)
-    .fillColor("black")
-    .text(t.customerData, 40, 130);
+// ✅ Cabeçalho igual ao da FACTURA (título + número na mesma linha + linha verde)
+doc
+  .font("Helvetica-Bold")
+  .fillColor(accentGreen)
+  .fontSize(16)
+  .text(`${t.quoteTitle} ${presupuesto.numero}`, 200, 68, {
+    align: "right",
+    width: 345,
+  });
 
-  doc
-    .font("Helvetica-Bold")
-    .fontSize(12)
-    .fillColor("black")
-    .text(t.companyData, 350, 130, {
-      width: 205,
-      align: "right",
-    });
+doc.rect(40, 110, 515, 1).fill(accentGreen);
+doc.fillColor("black");
 
-  // Cliente (esquerda)
-  doc
-    .font("Helvetica")
-    .fontSize(10)
-    .fillColor("black")
-    .text(
-      `Fecha: ${presupuesto.fecha.toLocaleDateString("es-ES")}`,
-      40,
-      160
-    )
-    .text(
-      `Cliente: ${presupuesto.cliente?.nombre ?? ""}`,
-      40,
-      175
-    );
 
-  if (presupuesto.cliente?.nif) {
-    doc.text(`NIF: ${presupuesto.cliente.nif}`, 40, 190);
-  }
-  if (presupuesto.cliente?.email) {
-    doc.text(`Email: ${presupuesto.cliente.email}`, 40, 205);
-  }
-  if (presupuesto.cliente?.telefono) {
-    doc.text(`Teléfono: ${presupuesto.cliente.telefono}`, 40, 220);
-  }
-  if (presupuesto.cliente?.direccion) {
-    doc.text(`Dirección: ${presupuesto.cliente.direccion}`, 40, 235);
-  }
 
-  // Empresa (direita)
-  const empresaLines = [
-    empresaNombre,
-    empresa?.direccion || "",
-    `${empresa?.cp ?? ""} ${empresa?.ciudad ?? ""}`.trim(),
-    empresa?.provincia || "",
-    empresa?.nif ? `NIF: ${empresa.nif}` : "",
-    empresa?.telefono ? `Tel: ${empresa.telefono}` : "",
-    empresa?.email || "",
-    empresa?.web || "",
-  ].filter(Boolean);
 
-  doc
-    .font("Helvetica")
-    .fontSize(9)
-    .fillColor("black")
-    .text(empresaLines.join("\n"), 350, 160, {
-      width: 190,
-      align: "right",
-    });
+ /*
+ * BLOCO "Datos del cliente" / "Datos de la empresa" (multi-idioma)
+ */
+doc
+  .font("Helvetica-Bold")
+  .fontSize(10)
+  .fillColor("black")
+  .text(t.customerData, 40, 130);
+
+doc
+  .font("Helvetica-Bold")
+  .fontSize(10)
+  .fillColor("black")
+  .text(t.companyData, 350, 130, {
+    width: 205,
+    align: "right",
+  });
+
+// ✅ Mesma “régua” pros 2 lados
+const baseY = 160;
+const lineH = 15;
+
+// ------------------------
+// Cliente (esquerda)
+// ------------------------
+doc.font("Helvetica").fontSize(10).fillColor("black");
+
+let yLeft = baseY;
+
+doc.text(`Fecha: ${presupuesto.fecha.toLocaleDateString("es-ES")}`, 35, yLeft);
+yLeft += lineH;
+
+doc.text(`Cliente: ${presupuesto.cliente?.nombre ?? ""}`, 35, yLeft);
+yLeft += lineH;
+
+if (presupuesto.cliente?.nif) {
+  doc.text(`NIF: ${presupuesto.cliente.nif}`, 35, yLeft);
+  yLeft += lineH;
+}
+if (presupuesto.cliente?.email) {
+  doc.text(`Email: ${presupuesto.cliente.email}`, 35, yLeft);
+  yLeft += lineH;
+}
+if (presupuesto.cliente?.telefono) {
+  doc.text(`Teléfono: ${presupuesto.cliente.telefono}`, 35, yLeft);
+  yLeft += lineH;
+}
+if (presupuesto.cliente?.direccion) {
+  doc.text(`Dirección: ${presupuesto.cliente.direccion}`, 35, yLeft);
+  yLeft += lineH;
+}
+
+// ------------------------
+// Empresa (direita) - linha por linha (SEM join)
+// ------------------------
+const empresaLines = [
+  empresaNombre,
+  empresa?.direccion || "",
+  `${empresa?.cp ?? ""} ${empresa?.ciudad ?? ""}`.trim(),
+  empresa?.provincia || "",
+  empresa?.nif ? `NIF: ${empresa.nif}` : "",
+  empresa?.telefono ? `Tel: ${empresa.telefono}` : "",
+  empresa?.email || "",
+  empresa?.web || "",
+].filter(Boolean);
+
+empresaLines.forEach((line, i) => {
+  doc.text(line, 350, baseY + i * lineH, {
+    width: 190,
+    align: "right",
+  });
+});
 
   /*
    * TABELA DE LÍNEAS
    */
-  const tableTop = 260;
+  const tableTop = 290;
 
   // 🔹 CABEÇALHO DA TABELA DE LÍNEAS: fundo verde + texto branco
   const headerHeight = 20;
-  doc.rect(40, tableTop - 4, 515, headerHeight).fill(accentGreen);
+  doc.rect(40, tableTop - 4, 520, headerHeight).fill(accentGreen);
 
   doc.fontSize(10).fillColor("white");
   doc.text(t.tableDescription, 45, tableTop);

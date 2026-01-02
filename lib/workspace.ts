@@ -1,30 +1,49 @@
 // lib/workspace.ts
 import { cookies } from "next/headers";
 import { getServerSession } from "next-auth";
+import { redirect } from "next/navigation";
+import prisma from "@/lib/prisma";
 import { authOptions } from "@/auth";
 
-export const DEFAULT_WORKSPACE_ID = 1;
-const COOKIE_NAME = "workspaceId";
+const WORKSPACE_COOKIE = "nexo_workspace_id";
 
-export async function getCurrentWorkspaceId(): Promise<number> {
-  // 1) Se o usuário tiver workspace fixo na sessão (ex: Claudinei), trava aqui
+export async function getCurrentWorkspaceId() {
   const session = await getServerSession(authOptions);
-  const sessionWid = (session?.user as any)?.workspaceId;
+  if (!session?.user?.email) throw new Error("No hay sesión. Inicia sesión.");
 
-  const widFromSession = Number(sessionWid);
-  if (Number.isFinite(widFromSession) && widFromSession > 0) {
-    return widFromSession;
+  const role = (session.user as any)?.role ?? "client";
+  const wsFromSession = (session.user as any)?.workspaceId ?? null;
+
+  // ✅ CLIENTE travado no workspace dele (Claudinei)
+  if (role === "client") {
+    if (!wsFromSession) throw new Error("Workspace no asignado para este usuario.");
+    return Number(wsFromSession);
   }
 
-  // 2) Senão usa cookie (admin / multi-workspace)
+  // ✅ ADMIN escolhe via cookie (workspaces)
   const cookieStore = await cookies();
-  const workspaceCookie = cookieStore.get(COOKIE_NAME);
-  const widFromCookie = Number(workspaceCookie?.value);
+  const cookieVal = cookieStore.get(WORKSPACE_COOKIE)?.value;
+  const cookieWsId = cookieVal ? Number(cookieVal) : null;
 
-  if (Number.isFinite(widFromCookie) && widFromCookie > 0) {
-    return widFromCookie;
+  if (cookieWsId && Number.isFinite(cookieWsId)) {
+    const exists = await prisma.workspace.findUnique({
+      where: { id: cookieWsId },
+      select: { id: true },
+    });
+    if (exists) return cookieWsId;
   }
 
-  // 3) fallback
-  return DEFAULT_WORKSPACE_ID;
+  // Se não tem cookie válido, pega o primeiro workspace existente
+  const first = await prisma.workspace.findFirst({
+    orderBy: { id: "asc" },
+    select: { id: true },
+  });
+
+  if (!first) throw new Error("No existe ningún workspace en la base de datos.");
+
+  // ✅ NÃO seta cookie aqui (Next não deixa).
+  // Redireciona pro route handler que seta cookie corretamente.
+  redirect(`/workspaces/switch?workspaceId=${first.id}`);
 }
+
+export const workspaceCookieName = WORKSPACE_COOKIE;
