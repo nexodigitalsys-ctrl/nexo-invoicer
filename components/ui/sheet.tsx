@@ -17,12 +17,12 @@ const SheetOverlay = React.forwardRef<
   React.ComponentPropsWithoutRef<typeof SheetPrimitive.Overlay>
 >(({ className, ...props }, ref) => (
   <SheetPrimitive.Overlay
+    ref={ref}
     className={cn(
       "fixed inset-0 z-50 bg-black/80 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
       className
     )}
     {...props}
-    ref={ref}
   />
 ))
 SheetOverlay.displayName = SheetPrimitive.Overlay.displayName
@@ -46,7 +46,7 @@ const sheetVariants = cva(
   }
 )
 
-// ✅ IMPORTANT: removemos o "title" HTML (string) do Radix e recriamos como ReactNode
+// ✅ removemos o "title" HTML (string) do Radix Content e recriamos como ReactNode
 type SheetContentProps =
   Omit<React.ComponentPropsWithoutRef<typeof SheetPrimitive.Content>, "title"> &
     VariantProps<typeof sheetVariants> & {
@@ -57,35 +57,53 @@ type SheetContentProps =
 const SheetContent = React.forwardRef<
   React.ElementRef<typeof SheetPrimitive.Content>,
   SheetContentProps
->(({ side = "right", className, children, title, description, ...props }, ref) => (
-  <SheetPortal>
-    <SheetOverlay />
-    <SheetPrimitive.Content
-      ref={ref}
-      className={cn(sheetVariants({ side }), className)}
-      {...props}
-    >
-      <SheetPrimitive.Close className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-secondary">
-        <X className="h-4 w-4" />
-        <span className="sr-only">Close</span>
-      </SheetPrimitive.Close>
+>(({ side = "right", className, children, title, description, ...props }, ref) => {
+  const a11yTitle = title ?? "Painel lateral"
+  const a11yDescription =
+    description ?? "Conteúdo e ações disponíveis neste painel."
 
-      {/* ✅ Header opcional sem depender de SheetTitle (evita problema de ordem/hoisting) */}
-      {(title || description) && (
-        <div className="mb-4 space-y-1 pr-8">
-          {title ? (
-            <div className="text-lg font-semibold text-foreground">{title}</div>
-          ) : null}
-          {description ? (
-            <div className="text-sm text-muted-foreground">{description}</div>
-          ) : null}
-        </div>
-      )}
+  return (
+    <SheetPortal>
+      <SheetOverlay />
+      <SheetPrimitive.Content
+        ref={ref}
+        className={cn(sheetVariants({ side }), className)}
+        {...props}
+      >
+        {/* ✅ A11y: sempre garante Title/Description (sr-only) */}
+        <SheetPrimitive.Title className="sr-only">
+          {a11yTitle}
+        </SheetPrimitive.Title>
+        <SheetPrimitive.Description className="sr-only">
+          {a11yDescription}
+        </SheetPrimitive.Description>
 
-      {children}
-    </SheetPrimitive.Content>
-  </SheetPortal>
-))
+        <SheetPrimitive.Close className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-secondary">
+          <X className="h-4 w-4" />
+          <span className="sr-only">Close</span>
+        </SheetPrimitive.Close>
+
+        {/* ✅ Header visível opcional */}
+        {(title || description) && (
+          <div className="mb-4 space-y-1 pr-8">
+            {title ? (
+              <div className="text-lg font-semibold text-foreground">
+                {title}
+              </div>
+            ) : null}
+            {description ? (
+              <div className="text-sm text-muted-foreground">
+                {description}
+              </div>
+            ) : null}
+          </div>
+        )}
+
+        {children}
+      </SheetPrimitive.Content>
+    </SheetPortal>
+  )
+})
 SheetContent.displayName = SheetPrimitive.Content.displayName
 
 const SheetHeader = ({

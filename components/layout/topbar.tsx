@@ -1,4 +1,6 @@
+
 import Image from "next/image";
+import LogoutButton from "@/components/auth/LogoutButton";
 
 export default function Topbar({
   leftSlot,
@@ -20,8 +22,12 @@ export default function Topbar({
         </div>
       </div>
 
-      {/* espaço para menu do usuário no futuro */}
-      <div className="flex items-center gap-2" />
+      {/* menu do usuário */}
+      <div className="flex items-center gap-2">
+        <LogoutButton />
+      </div>
     </header>
   );
 }
+
+
