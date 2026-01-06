@@ -122,7 +122,7 @@ if (!logoBuffer) {
 }
 
 if (logoBuffer) {
-  doc.image(logoBuffer, 40, 35, { fit: [200, 100] });
+  doc.image(logoBuffer, 40, 15, { fit: [260, 140] });
 } else {
   doc.fontSize(18).text(empresaNombre, 50, 60);
 }
