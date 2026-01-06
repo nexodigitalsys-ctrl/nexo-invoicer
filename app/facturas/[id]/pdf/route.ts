@@ -196,7 +196,7 @@ if (logoBuffer) {
     doc.text(empresaWeb, 40, currentY + 72);
   }
 
-  const clienteX = 320;
+  const clienteX = 395;
   const cliente = factura.cliente;
 
   doc
