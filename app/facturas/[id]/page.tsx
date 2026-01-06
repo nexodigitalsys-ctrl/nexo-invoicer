@@ -1,5 +1,6 @@
 import prisma from "@/lib/prisma";
 import { notFound } from "next/navigation";
+import { getCurrentWorkspaceId } from "@/lib/workspace";
 
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -40,10 +41,13 @@ export default async function FacturaDetallePage({ params }: PageProps) {
 
   if (!factura) notFound();
 
+  const workspaceId = await getCurrentWorkspaceId();
+
   const servicios = await prisma.servicio.findMany({
-    where: { activo: true },
+    where: { workspaceId, activo: true },
     orderBy: { nombre: "asc" },
   });
+
 
   const subtotal = factura.subtotal ?? 0;
   const ivaPorcentaje = factura.ivaPorcentaje ?? 0;

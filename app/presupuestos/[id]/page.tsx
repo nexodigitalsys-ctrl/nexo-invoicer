@@ -1,5 +1,6 @@
 import prisma from "@/lib/prisma";
 import { notFound } from "next/navigation";
+import { getCurrentWorkspaceId } from "@/lib/workspace";
 
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -38,10 +39,13 @@ export default async function PresupuestoDetallePage({ params }: PageProps) {
 
   if (!presupuesto) notFound();
 
+  const workspaceId = await getCurrentWorkspaceId();
+
   const servicios = await prisma.servicio.findMany({
-    where: { activo: true },
+    where: { workspaceId, activo: true },
     orderBy: { nombre: "asc" },
   });
+
 
   return (
     <div className="space-y-6">
