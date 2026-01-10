@@ -7,175 +7,150 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-
 model User {
-  id           Int      @id @default(autoincrement())
-  email        String   @unique
+  id           Int          @id @default(autoincrement())
+  email        String       @unique
   name         String?
   passwordHash String
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-
-  memberships Membership[]
-  
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+  memberships  Membership[]
 }
 
 model Workspace {
-  id        Int      @id @default(autoincrement())
-  name      String
-  slug      String   @unique // ex: "superclim", "cliente-construcciones"
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  memberships   Membership[]
-  empresaConfig EmpresaConfig?
+  id            Int            @id @default(autoincrement())
+  name          String
+  slug          String         @unique
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
   clientes      Cliente[]
+  empresaConfig EmpresaConfig?
   facturas      Factura[]
+  memberships   Membership[]
   presupuestos  Presupuesto[]
   servicios     Servicio[]
 }
 
 model Membership {
-  id          Int    @id @default(autoincrement())
+  id          Int       @id @default(autoincrement())
   userId      Int
   workspaceId Int
-  role        String @default("owner")
-
-  user      User      @relation(fields: [userId], references: [id])
-  workspace Workspace @relation(fields: [workspaceId], references: [id])
+  role        String    @default("owner")
+  user        User      @relation(fields: [userId], references: [id])
+  workspace   Workspace @relation(fields: [workspaceId], references: [id])
 
   @@unique([userId, workspaceId])
 }
 
 model Cliente {
-  id          Int       @id @default(autoincrement())
-  workspaceId Int
-  workspace   Workspace @relation(fields: [workspaceId], references: [id])
-  nombre      String
-  nif         String // 👈 obrigatório para faturar
-  email       String?
-  telefono    String?
-  direccion   String? // 👈 NOVO CAMPO
-  createdAt   DateTime  @default(now())
-
-  presupuestos Presupuesto[]
+  id           Int           @id @default(autoincrement())
+  workspaceId  Int
+  nombre       String
+  nif          String
+  email        String?
+  telefono     String?
+  direccion    String?
+  createdAt    DateTime      @default(now())
+  workspace    Workspace     @relation(fields: [workspaceId], references: [id])
   facturas     Factura[]
+  presupuestos Presupuesto[]
 }
 
 model Servicio {
-  id          Int       @id @default(autoincrement())
-  workspaceId Int
-  workspace   Workspace @relation(fields: [workspaceId], references: [id])
-  nombre      String
-  descripcion String?
-  precio      Float?
-  activo      Boolean   @default(true)
-  createdAt   DateTime  @default(now())
-
-  lineasPresupuesto PresupuestoLinea[]
+  id                Int                @id @default(autoincrement())
+  workspaceId       Int
+  nombre            String
+  descripcion       String?
+  precio            Float?
+  activo            Boolean            @default(true)
+  createdAt         DateTime           @default(now())
   lineasFactura     FacturaLinea[]
+  lineasPresupuesto PresupuestoLinea[]
+  workspace         Workspace          @relation(fields: [workspaceId], references: [id])
 }
 
 model Presupuesto {
-  id          Int       @id @default(autoincrement())
-  workspaceId Int
-  workspace   Workspace @relation(fields: [workspaceId], references: [id])
-  numero      String    
-  clienteId   Int
-  cliente     Cliente   @relation(fields: [clienteId], references: [id])
+  id            Int                @id @default(autoincrement())
+  workspaceId   Int
+  numero        String
+  clienteId     Int
+  fecha         DateTime           @default(now())
+  estado        String             @default("borrador")
+  subtotal      Float              @default(0)
+  ivaPorcentaje Float              @default(21)
+  ivaImporte    Float              @default(0)
+  total         Float              @default(0)
+  notas         String?
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @default(now()) @updatedAt
+  cliente       Cliente            @relation(fields: [clienteId], references: [id])
+  workspace     Workspace          @relation(fields: [workspaceId], references: [id])
+  lineas        PresupuestoLinea[]
 
-  fecha  DateTime @default(now())
-  estado String   @default("borrador")
-
-  // 🔹 ADICIONAR ESTES 3 SE AINDA NÃO EXISTEM:
-  subtotal      Float @default(0)
-  ivaPorcentaje Float @default(21)
-  ivaImporte    Float @default(0)
-
-  total Float   @default(0) // se já existir, deixa como está
-  notas String?
-
-  lineas PresupuestoLinea[]
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @default(now()) @updatedAt
   @@unique([workspaceId, numero])
 }
 
 model PresupuestoLinea {
-  id            Int         @id @default(autoincrement())
-  presupuestoId Int
-  presupuesto   Presupuesto @relation(fields: [presupuestoId], references: [id])
-
-  servicioId Int?
-  servicio   Servicio? @relation(fields: [servicioId], references: [id])
-
+  id             Int         @id @default(autoincrement())
+  presupuestoId  Int
+  servicioId     Int?
   descripcion    String
   cantidad       Int
   precioUnitario Float
   totalLinea     Float
-
-  createdAt DateTime @default(now())
+  createdAt      DateTime    @default(now())
+  presupuesto    Presupuesto @relation(fields: [presupuestoId], references: [id])
+  servicio       Servicio?   @relation(fields: [servicioId], references: [id])
 }
 
 model Factura {
-  id          Int       @id @default(autoincrement())
-  workspaceId Int
-  workspace   Workspace @relation(fields: [workspaceId], references: [id])
-  numero      String    
-  clienteId   Int
-  cliente     Cliente   @relation(fields: [clienteId], references: [id])
+  id            Int            @id @default(autoincrement())
+  workspaceId   Int
+  numero        String
+  clienteId     Int
+  fecha         DateTime       @default(now())
+  estado        String         @default("borrador")
+  subtotal      Float          @default(0)
+  ivaPorcentaje Float          @default(21)
+  ivaImporte    Float          @default(0)
+  total         Float          @default(0)
+  notas         String?
+  createdAt     DateTime       @default(now())
+  cliente       Cliente        @relation(fields: [clienteId], references: [id])
+  workspace     Workspace      @relation(fields: [workspaceId], references: [id])
+  lineas        FacturaLinea[]
 
-  fecha  DateTime @default(now())
-  estado String   @default("borrador")
-
-  // 🔽 ADICIONA ESTES CAMPOS
-  subtotal      Float @default(0)
-  ivaPorcentaje Float @default(21)
-  ivaImporte    Float @default(0)
-
-  total  Float          @default(0)
-  notas  String?
-  lineas FacturaLinea[]
-
-  createdAt DateTime @default(now())
   @@unique([workspaceId, numero])
 }
 
 model FacturaLinea {
   id             Int       @id @default(autoincrement())
   facturaId      Int
-  factura        Factura   @relation(fields: [facturaId], references: [id], onDelete: Cascade)
   servicioId     Int?
-  servicio       Servicio? @relation(fields: [servicioId], references: [id])
   descripcion    String
   cantidad       Int       @default(1)
   precioUnitario Float
   totalLinea     Float
+  factura        Factura   @relation(fields: [facturaId], references: [id], onDelete: Cascade)
+  servicio       Servicio? @relation(fields: [servicioId], references: [id])
 }
 
 model EmpresaConfig {
   id          Int       @id @default(autoincrement())
   workspaceId Int       @unique
+  nombre      String
+  nif         String?
+  direccion   String?
+  cp          String?
+  ciudad      String?
+  provincia   String?
+  telefono    String?
+  email       String?
+  web         String?
+  iban        String?
+  logoPath    String?
+  idioma      String    @default("es")
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
   workspace   Workspace @relation(fields: [workspaceId], references: [id])
-  
-
-  nombre    String
-  nif       String?
-  direccion String?
-  cp        String?
-  ciudad    String?
-  provincia String?
-  telefono  String?
-  email     String?
-  web       String?
-  iban      String?
-  logoPath  String?
-  idioma String @default("es") // "es" ou "ca"
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
 }
-
-
-
-
