@@ -40,6 +40,23 @@ const texts = {
 
 type Idioma = keyof typeof texts;
 
+function formatMoney(value: number, idioma: Idioma) {
+  const locale = idioma === "ca" ? "ca-ES" : "es-ES";
+  return new Intl.NumberFormat(locale, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(value);
+}
+
+function formatPercent(value: number, idioma: Idioma) {
+  const locale = idioma === "ca" ? "ca-ES" : "es-ES";
+  return new Intl.NumberFormat(locale, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(value);
+}
+
+
 
 export async function GET(
   req: NextRequest,
