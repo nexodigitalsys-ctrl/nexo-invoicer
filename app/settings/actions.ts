@@ -1,11 +1,24 @@
 "use server";
 
-import prisma from "@/lib/prisma";
-import { redirect } from "next/navigation";
-import { getCurrentWorkspaceId } from "@/lib/workspace";
-import { getSupabaseServer } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 
+import prisma from "@/lib/prisma";
+import { getSupabaseServer } from "@/lib/supabase/server";
+import { getCurrentWorkspaceId } from "@/lib/workspace";
+
+const MAX_LOGO_SIZE_BYTES = 5 * 1024 * 1024;
+const ALLOWED_LOGO_TYPES = new Set([
+  "image/png",
+  "image/jpeg",
+  "image/jpg",
+  "image/webp",
+  "image/svg+xml",
+]);
+
+function redirectWithError(message: string): never {
+  redirect(`/settings?error=${encodeURIComponent(message)}`);
+}
 
 export async function guardarEmpresaConfig(formData: FormData) {
   "use server";
@@ -22,52 +35,53 @@ export async function guardarEmpresaConfig(formData: FormData) {
   const emailRaw = formData.get("email")?.toString().trim() || "";
   const webRaw = formData.get("web")?.toString().trim() || "";
   const ibanRaw = formData.get("iban")?.toString().trim() || "";
-
-  // 👇 NOVO: ler idioma do formulário
   const idiomaRaw = formData.get("idioma")?.toString() || "es";
   const idioma: "es" | "ca" = idiomaRaw === "ca" ? "ca" : "es";
 
   if (!nombre) {
-    throw new Error("El nombre de la empresa es obligatorio");
+    redirectWithError("El nombre de la empresa es obligatorio.");
   }
 
-  // 🔹 LOGO (Supabase Storage)
-const logoFile = formData.get("logo") as File | null;
-let logoPath: string | null = null;
+  const logoFile = formData.get("logo") as File | null;
+  let logoPath: string | null = null;
 
-if (logoFile && logoFile.size > 0) {
-  const supabase = getSupabaseServer();
+  if (logoFile && logoFile.size > 0) {
+    if (!ALLOWED_LOGO_TYPES.has(logoFile.type)) {
+      redirectWithError("Formato de logo invalido. Use PNG, JPG, WEBP o SVG.");
+    }
+    if (logoFile.size > MAX_LOGO_SIZE_BYTES) {
+      redirectWithError("El logo supera 5MB.");
+    }
 
-  const originalName = logoFile.name || "logo.png";
-  const ext = originalName.includes(".")
-    ? originalName.split(".").pop()?.toLowerCase()
-    : "png";
+    let supabase;
+    try {
+      supabase = getSupabaseServer();
+    } catch {
+      redirectWithError(
+        "Falta configurar SUPABASE_URL y SUPABASE_SERVICE_ROLE_KEY en Vercel."
+      );
+    }
 
-  const fileName = `logo-${workspaceId}-${Date.now()}.${ext}`;
-  const storagePath = `workspaces/${workspaceId}/${fileName}`;
+    const originalName = logoFile.name || "logo.png";
+    const ext = originalName.includes(".")
+      ? originalName.split(".").pop()?.toLowerCase()
+      : "png";
+    const fileName = `logo-${workspaceId}-${Date.now()}.${ext}`;
+    const storagePath = `workspaces/${workspaceId}/${fileName}`;
 
-  const arrayBuffer = await logoFile.arrayBuffer();
-  const buffer = Buffer.from(arrayBuffer);
-
-  const { error } = await supabase.storage
-    .from("logos")
-    .upload(storagePath, buffer, {
+    const buffer = Buffer.from(await logoFile.arrayBuffer());
+    const { error } = await supabase.storage.from("logos").upload(storagePath, buffer, {
       contentType: logoFile.type || "image/png",
       upsert: true,
     });
 
-  if (error) {
-    throw new Error(`Error subiendo logo: ${error.message}`);
+    if (error) {
+      redirectWithError(`Error subiendo logo: ${error.message}`);
+    }
+
+    const { data } = supabase.storage.from("logos").getPublicUrl(storagePath);
+    logoPath = data.publicUrl;
   }
-
-  const { data } = supabase.storage.from("logos").getPublicUrl(storagePath);
-  logoPath = data.publicUrl;
-}
-
-  // buscar config só deste workspace
-  const existing = await prisma.empresaConfig.findUnique({
-    where: { workspaceId },
-  });
 
   const dataToSave = {
     workspaceId,
@@ -82,20 +96,19 @@ if (logoFile && logoFile.size > 0) {
     web: webRaw || null,
     iban: ibanRaw || null,
     idioma,
-    ...(logoPath ? { logoPath } : {}), // só atualiza logo se enviou arquivo
+    ...(logoPath ? { logoPath } : {}),
   };
 
-  if (existing) {
-    await prisma.empresaConfig.update({
+  try {
+    await prisma.empresaConfig.upsert({
       where: { workspaceId },
-      data: dataToSave,
+      create: dataToSave,
+      update: dataToSave,
     });
-  } else {
-    await prisma.empresaConfig.create({
-      data: dataToSave,
-    });
+  } catch {
+    redirectWithError("No se pudo guardar la configuracion de la empresa.");
   }
 
   revalidatePath("/settings");
-  redirect("/settings");
+  redirect("/settings?ok=1");
 }
