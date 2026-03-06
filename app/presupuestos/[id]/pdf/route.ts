@@ -205,7 +205,7 @@ export async function GET(
   const logoMaxW = 170;
   const logoMaxH = 90;
   const logoAreaRight = x1 - 210 - 16;
-  const logoX = x0 + Math.max(0, (logoAreaRight - x0 - logoMaxW) / 2);
+  const logoX = x0 + Math.max(0, (logoAreaRight - x0 - logoMaxW) / 2) - 12;
   const logoY = 10;
 
   if (logoBuffer) {

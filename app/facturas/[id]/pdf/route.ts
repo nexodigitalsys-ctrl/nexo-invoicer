@@ -219,7 +219,7 @@ export async function GET(
   const logoMaxW = 170;
   const logoMaxH = 90;
   const logoAreaRight = x1 - 240 - 16;
-  const logoX = x0 + Math.max(0, (logoAreaRight - x0 - logoMaxW) / 2);
+  const logoX = x0 + Math.max(0, (logoAreaRight - x0 - logoMaxW) / 2) - 12;
   const logoY = 10;
 
   if (logoBuffer) {
@@ -508,7 +508,7 @@ export async function GET(
   // posiciona sempre acima do rodapé (sem estourar)
   const footerY = pageH - 55;
   const maxPayY = footerY - footerH - huellaH - payH2 + 22; // <-- aumenta aqui
-  const payY = Math.min(currentY + 10, maxPayY);
+  const payY = Math.min(currentY + 22, maxPayY);
 
 
   doc.roundedRect(payX, payY, payW, payH2, 12).fill(card);
