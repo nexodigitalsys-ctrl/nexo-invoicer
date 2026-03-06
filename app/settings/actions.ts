@@ -20,6 +20,12 @@ function redirectWithError(message: string): never {
   redirect(`/settings?error=${encodeURIComponent(message)}`);
 }
 
+async function fileToDataUrl(file: File): Promise<string> {
+  const buffer = Buffer.from(await file.arrayBuffer());
+  const mimeType = file.type || "image/png";
+  return `data:${mimeType};base64,${buffer.toString("base64")}`;
+}
+
 export async function guardarEmpresaConfig(formData: FormData) {
   "use server";
 
@@ -53,15 +59,6 @@ export async function guardarEmpresaConfig(formData: FormData) {
       redirectWithError("El logo supera 5MB.");
     }
 
-    let supabase;
-    try {
-      supabase = getSupabaseServer();
-    } catch {
-      redirectWithError(
-        "Falta configurar SUPABASE_URL y SUPABASE_SERVICE_ROLE_KEY en Vercel."
-      );
-    }
-
     const originalName = logoFile.name || "logo.png";
     const ext = originalName.includes(".")
       ? originalName.split(".").pop()?.toLowerCase()
@@ -69,18 +66,23 @@ export async function guardarEmpresaConfig(formData: FormData) {
     const fileName = `logo-${workspaceId}-${Date.now()}.${ext}`;
     const storagePath = `workspaces/${workspaceId}/${fileName}`;
 
-    const buffer = Buffer.from(await logoFile.arrayBuffer());
-    const { error } = await supabase.storage.from("logos").upload(storagePath, buffer, {
-      contentType: logoFile.type || "image/png",
-      upsert: true,
-    });
+    try {
+      const supabase = getSupabaseServer();
+      const buffer = Buffer.from(await logoFile.arrayBuffer());
+      const { error } = await supabase.storage.from("logos").upload(storagePath, buffer, {
+        contentType: logoFile.type || "image/png",
+        upsert: true,
+      });
 
-    if (error) {
-      redirectWithError(`Error subiendo logo: ${error.message}`);
+      if (error) {
+        logoPath = await fileToDataUrl(logoFile);
+      } else {
+        const { data } = supabase.storage.from("logos").getPublicUrl(storagePath);
+        logoPath = data.publicUrl;
+      }
+    } catch {
+      logoPath = await fileToDataUrl(logoFile);
     }
-
-    const { data } = supabase.storage.from("logos").getPublicUrl(storagePath);
-    logoPath = data.publicUrl;
   }
 
   const dataToSave = {

@@ -76,6 +76,16 @@ async function readPublicAssetToBuffer(assetPath: string): Promise<Buffer | null
   }
 }
 
+function dataUrlToBuffer(dataUrl: string): Buffer | null {
+  const match = dataUrl.match(/^data:image\/[a-zA-Z0-9.+-]+;base64,(.+)$/);
+  if (!match) return null;
+  try {
+    return Buffer.from(match[1], "base64");
+  } catch {
+    return null;
+  }
+}
+
 // =====================================
 // Route
 // =====================================
@@ -172,7 +182,9 @@ export async function GET(
   let logoBuffer: Buffer | null = null;
 
   if (empresa?.logoPath) {
-    if (empresa.logoPath.startsWith("http")) {
+    if (empresa.logoPath.startsWith("data:image/")) {
+      logoBuffer = dataUrlToBuffer(empresa.logoPath);
+    } else if (empresa.logoPath.startsWith("http")) {
       logoBuffer = await fetchToBuffer(empresa.logoPath);
     } else {
       const localPath = empresa.logoPath.startsWith("/")
