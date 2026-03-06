@@ -202,11 +202,15 @@ export async function GET(
   }
 
   const topY = 10;
+  const cardW = 210;
+  const cardH = 72;
+  const cardX = x1 - cardW;
+  const cardY = 40;
   const logoMaxW = 170;
   const logoMaxH = 90;
-  const logoAreaRight = x1 - 210 - 16;
+  const logoAreaRight = cardX - 16;
   const logoX = x0 + Math.max(0, (logoAreaRight - x0 - logoMaxW) / 2) - 12;
-  const logoY = 10;
+  const logoY = cardY;
 
   if (logoBuffer) {
     // Maior e com “fit” (sem estourar)
@@ -218,11 +222,6 @@ export async function GET(
   // =========================
   // Card azul do título (direita)
   // =========================
-  const cardW = 210;
-  const cardH = 72;
-  const cardX = x1 - cardW;
-  const cardY = 40;
-
   doc.roundedRect(cardX, cardY, cardW, cardH, 14).fill(card);
   doc.save();
   doc.roundedRect(cardX, cardY, cardW, 28, 14).fill(blueDark);
