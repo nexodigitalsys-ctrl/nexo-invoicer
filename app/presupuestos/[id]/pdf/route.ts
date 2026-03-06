@@ -162,8 +162,8 @@ export async function GET(
   // =========================
   // Footer ancorado (SEMPRE pág 1)
   // =========================
-  const footerTextY = pageH - 32;        // linha do footer
-  const footerTopY = footerTextY - 16;   // “teto” do conteúdo antes do footer
+  const footerTextY = pageH - 52;        // linha do footer
+  const footerTopY = footerTextY - 14;   // “teto” do conteúdo antes do footer
 
   // =========================
   // Blocos finais ancorados (de baixo pra cima)
@@ -202,12 +202,15 @@ export async function GET(
   }
 
   const topY = 10;
-  const logoX = x0;
+  const logoMaxW = 170;
+  const logoMaxH = 90;
+  const logoAreaRight = x1 - 210 - 16;
+  const logoX = x0 + Math.max(0, (logoAreaRight - x0 - logoMaxW) / 2);
   const logoY = 10;
 
   if (logoBuffer) {
     // Maior e com “fit” (sem estourar)
-    doc.image(logoBuffer, logoX, logoY, { fit: [260, 150] });
+    doc.image(logoBuffer, logoX, logoY, { fit: [logoMaxW, logoMaxH] });
   } else {
     doc.font("Helvetica-Bold").fontSize(26).fillColor(text).text(empresaNombre, x0, topY + 10);
   }

@@ -216,12 +216,15 @@ export async function GET(
   }
 
   const topY = 10;
-  const logoX = x0;
+  const logoMaxW = 170;
+  const logoMaxH = 90;
+  const logoAreaRight = x1 - 240 - 16;
+  const logoX = x0 + Math.max(0, (logoAreaRight - x0 - logoMaxW) / 2);
   const logoY = 10;
 
   if (logoBuffer) {
     // Maior e com “fit” (sem estourar)
-    doc.image(logoBuffer, logoX, logoY, { fit: [260, 150] });
+    doc.image(logoBuffer, logoX, logoY, { fit: [logoMaxW, logoMaxH] });
   } else {
     doc.font("Helvetica-Bold").fontSize(26).fillColor(text).text(empresaNombre, x0, topY + 10);
   }
