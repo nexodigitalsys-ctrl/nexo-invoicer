@@ -202,14 +202,13 @@ export async function GET(
   }
 
   const topY = 10;
-  const cardW = 210;
-  const cardH = 72;
+  const cardW = 240;
+  const cardH = 86;
   const cardX = x1 - cardW;
-  const cardY = 40;
+  const cardY = 25;
   const logoMaxW = 170;
   const logoMaxH = 90;
-  const logoAreaRight = cardX - 16;
-  const logoX = x0 + Math.max(0, (logoAreaRight - x0 - logoMaxW) / 2) - 12;
+  const logoX = x0 - 26;
   const logoY = cardY;
 
   if (logoBuffer) {
@@ -228,16 +227,16 @@ export async function GET(
   doc.restore();
   doc.rect(cardX, cardY + 14, cardW, 14).fill(blueDark);
 
-  doc.fillColor("white").font("Helvetica-Bold").fontSize(16).text(t.title, cardX + 18, cardY + 6);
+  doc.fillColor("white").font("Helvetica-Bold").fontSize(16).text(t.title, cardX + 18, cardY + 10);
 
   const fechaTxt = formatDateDMY(new Date(presupuesto.fecha));
   doc
     .fillColor(text)
     .font("Helvetica-Bold")
     .fontSize(11)
-    .text(presupuesto.numero, cardX + 18, cardY + 36);
+    .text(presupuesto.numero, cardX + 18, cardY + 44);
 
-  doc.fillColor(muted).font("Helvetica").fontSize(9).text(`Fecha: ${fechaTxt}`, cardX + 18, cardY + 52);
+  doc.fillColor(muted).font("Helvetica").fontSize(10).text(`Fecha: ${fechaTxt}`, cardX + 18, cardY + 62);
 
   // =========================
   // Blocos Cliente (esq) e Empresa (dir)
