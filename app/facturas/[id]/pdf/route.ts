@@ -573,12 +573,6 @@ export async function GET(
     align: "center",
   });
 
-  // Se você ainda quiser o “Gracias…”:
-  doc.fillColor("#9CA3AF").font("Helvetica-Bold").fontSize(10).text(t.thanksSmall, x0, footerY - 35, {
-    width: contentW,
-    align: "center",
-  });
-
   doc.end();
 
   const pdfBuffer = await pdfBufferPromise;
@@ -591,3 +585,4 @@ export async function GET(
     },
   });
 }
+
