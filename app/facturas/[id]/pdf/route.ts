@@ -216,11 +216,15 @@ export async function GET(
   }
 
   const topY = 10;
+  const boxW = 240;
+  const boxH = 86;
+  const boxX = x1 - boxW;
+  const boxY = 25;
   const logoMaxW = 170;
   const logoMaxH = 90;
-  const logoAreaRight = x1 - 240 - 16;
+  const logoAreaRight = boxX - 16;
   const logoX = x0 + Math.max(0, (logoAreaRight - x0 - logoMaxW) / 2) - 12;
-  const logoY = 10;
+  const logoY = boxY;
 
   if (logoBuffer) {
     // Maior e com “fit” (sem estourar)
@@ -232,11 +236,6 @@ export async function GET(
   // =========================
   // Card FACTURA (topo direito)
   // =========================
-  const boxW = 240;
-  const boxH = 86;
-  const boxX = x1 - boxW;
-  const boxY = 25;
-
   // caixa clara
   doc.roundedRect(boxX, boxY, boxW, boxH, 12).fill("#EEF2FF");
   // faixa azul (simula gradient)
