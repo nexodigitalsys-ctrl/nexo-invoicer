@@ -63,7 +63,8 @@ export default async function FacturaDetallePage({ params }: PageProps) {
 
   const workspaceId = await getCurrentWorkspaceId();
 
-  const servicios = await prisma.servicio.findMany({
+  const servicios: Array<{ id: number; nombre: string; precio: number | null }> =
+    await prisma.servicio.findMany({
     where: { workspaceId, activo: true },
     orderBy: { nombre: "asc" },
   });
