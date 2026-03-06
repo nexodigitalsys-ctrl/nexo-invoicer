@@ -222,7 +222,7 @@ export async function GET(
   const boxY = 25;
   const logoMaxW = 170;
   const logoMaxH = 90;
-  const logoX = x0 + 4;
+  const logoX = x0 - 26;
   const logoY = boxY;
 
   if (logoBuffer) {
