@@ -1,77 +1,97 @@
+import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import PDFDocument from "pdfkit";
-import { NextResponse, NextRequest } from "next/server";
-import fs from "fs";
+import { readFile } from "fs/promises";
 import path from "path";
 
-
-export const runtime = "nodejs";
-
-
-/**
- * Textos multi-idioma (ES / CA) para a estrutura da fatura
- */
+// =====================================
+// Textos
+// =====================================
 const texts = {
   es: {
-    invoiceTitle: "FACTURA",
-    quoteTitle: "PRESUPUESTO",
-    customerData: "Datos del cliente",
-    companyData: "Datos de la empresa",
-    base: "Base imponible",
-    vat: "IVA",
-    totalInvoice: "Total factura",
-    totalQuote: "Total presupuesto",
-    notes: "Observaciones",
-
-    // 🔹 NOVO: cabeçalho da tabela
+    title: "PRESUPUESTO",
+    customerLabel: "Presupuesto a:",
     tableDescription: "Descripción",
-    tableQuantity: "Cant.",
-    tableUnitPrice: "P. unit. (€)",
-    tableTotal: "Total (€)",
+    tableQuantity: "Cantidad",
+    tableUnitPrice: "Precio unitario",
+    tableTotal: "Total",
+    notesTitle: "Observaciones",
+    base: "Base imponible:",
+    vat: "IVA",
+    totalLabel: "TOTAL (EUR):",
   },
   ca: {
-    invoiceTitle: "FACTURA",
-    quoteTitle: "PRESSUPOST",
-    customerData: "Dades del client",
-    companyData: "Dades de l'empresa",
-    base: "Base imposable",
-    vat: "IVA",
-    totalInvoice: "Total factura",
-    totalQuote: "Total pressupost",
-    notes: "Observacions",
-
-    // 🔹 NOVO: cabeçalho da tabela em catalão
+    title: "PRESSUPOST",
+    customerLabel: "Pressupost a:",
     tableDescription: "Descripció",
-    tableQuantity: "Quant.",
-    tableUnitPrice: "Preu unit. (€)",
-    tableTotal: "Total (€)",
+    tableQuantity: "Quantitat",
+    tableUnitPrice: "Preu unitari",
+    tableTotal: "Total",
+    notesTitle: "Observacions",
+    base: "Base imposable:",
+    vat: "IVA",
+    totalLabel: "TOTAL (EUR):",
   },
 } as const;
 
-type Idioma = keyof typeof texts; // 'es' | 'ca'
+type Idioma = keyof typeof texts;
 
-async function fetchToBuffer(url: string) {
-  const res = await fetch(url);
-  if (!res.ok) return null;
-  const ab = await res.arrayBuffer();
-  return Buffer.from(ab);
+function formatEuro(value: number, idioma: Idioma): string {
+  const locale = idioma === "ca" ? "ca-ES" : "es-ES";
+  return new Intl.NumberFormat(locale, {
+    useGrouping: true,
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(value);
 }
 
+function formatDateDMY(date: Date): string {
+  const dd = String(date.getDate()).padStart(2, "0");
+  const mm = String(date.getMonth() + 1).padStart(2, "0");
+  const yyyy = String(date.getFullYear());
+  return `${dd}/${mm}/${yyyy}`;
+}
 
+async function fetchToBuffer(url: string): Promise<Buffer | null> {
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    const ab = await res.arrayBuffer();
+    return Buffer.from(ab);
+  } catch {
+    return null;
+  }
+}
 
+function publicFilePath(assetPath: string) {
+  const cleanPath = assetPath.replace(/^\/+/, "");
+  return path.join(process.cwd(), "public", cleanPath);
+}
+
+async function readPublicAssetToBuffer(assetPath: string): Promise<Buffer | null> {
+  try {
+    return await readFile(publicFilePath(assetPath));
+  } catch {
+    return null;
+  }
+}
+
+// =====================================
+// Route
+// =====================================
 export async function GET(
   req: NextRequest,
-  { params }: { params: Promise<{ id: string }> } // Next 15: params é Promise
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const numeroId = Number(id);
+  const presupuestoId = Number(id);
 
-  if (isNaN(numeroId)) {
+  if (Number.isNaN(presupuestoId)) {
     return new NextResponse("ID de presupuesto inválido", { status: 400 });
   }
 
   const presupuesto = await prisma.presupuesto.findUnique({
-    where: { id: numeroId },
+    where: { id: presupuestoId },
     include: {
       cliente: true,
       lineas: {
@@ -85,288 +105,349 @@ export async function GET(
     return new NextResponse("Presupuesto no encontrado", { status: 404 });
   }
 
-  // Empresa do mesmo workspace
   const empresa = await prisma.empresaConfig.findUnique({
     where: { workspaceId: presupuesto.workspaceId },
   });
 
-  // Idioma para o PDF
   const idioma: Idioma = empresa?.idioma === "ca" ? "ca" : "es";
   const t = texts[idioma];
 
-  const empresaNombre = empresa?.nombre ?? "Mi Empresa";
-  const accentGreen = "#16A34A";
+  const empresaNombre = empresa?.nombre ?? "Nexo Digital";
+  const empresaNif = empresa?.nif ?? "";
+  const empresaDireccion = empresa?.direccion ?? "";
+  const empresaCP = empresa?.cp ?? "";
+  const empresaCiudad = empresa?.ciudad ?? "";
+  const empresaProvincia = empresa?.provincia ?? "";
+  const empresaTelefono = empresa?.telefono ?? "";
+  const empresaEmail = empresa?.email ?? "";
+  const empresaWeb = empresa?.web ?? "";
 
-  // Criar PDF em memória
-  const doc = new PDFDocument({ margin: 40 });
+  // PDF
+  const doc = new PDFDocument({ size: "A4", margin: 40 });
+
   const chunks: Buffer[] = [];
-
-  doc.on("data", (chunk) => chunks.push(chunk));
-  doc.on("end", () => {});
-
- // Logo: se existir URL do supabase, usa; senão fallback pro logo padrão do public
-let logoBuffer: Buffer | null = null;
-
-if (empresa?.logoPath) {
-  const logoUrl = empresa.logoPath.startsWith("http")
-    ? empresa.logoPath
-    : new URL(empresa.logoPath, req.url).toString();
-
-  logoBuffer = await fetchToBuffer(logoUrl);
-}
-
-// fallback para um logo padrão que está no /public
-if (!logoBuffer) {
-  const fallbackUrl = new URL("/logo-nexo.png", req.url).toString();
-  logoBuffer = await fetchToBuffer(fallbackUrl);
-}
-
-if (logoBuffer) {
-  doc.image(logoBuffer, 20, 15, { fit: [200, 100] });
-} else {
-  doc.fontSize(18).text(empresaNombre, 50, 60);
-}
-
-// ✅ Cabeçalho igual ao da FACTURA (título + número na mesma linha + linha verde)
-doc
-  .font("Helvetica-Bold")
-  .fillColor(accentGreen)
-  .fontSize(16)
-  .text(`${t.quoteTitle} ${presupuesto.numero}`, 200, 68, {
-    align: "right",
-    width: 345,
+  doc.on("data", (chunk: Buffer) => chunks.push(chunk));
+  const pdfBufferPromise = new Promise<Buffer>((resolve) => {
+    doc.on("end", () => resolve(Buffer.concat(chunks)));
   });
 
-doc.rect(40, 110, 515, 1).fill(accentGreen);
-doc.fillColor("black");
+  // =========================
+  // Layout base
+  // =========================
+  const pageW = doc.page.width; // ~595
+  const pageH = doc.page.height; // ~842
+  const margin = 40;
+  const x0 = margin;
+  const x1 = pageW - margin; // 555
+  const contentW = x1 - x0; // 515
 
+  const blue = "#2563EB";
+  const blueDark = "#1E40AF";
+  const text = "#111827";
+  const muted = "#6B7280";
+  const border = "#E5E7EB";
+  const card = "#F3F4F6";
+  const rowAlt = "#F9FAFB";
 
+  // =========================
+  // Footer ancorado (SEMPRE pág 1)
+  // =========================
+  const footerTextY = pageH - 32;        // linha do footer
+  const footerTopY = footerTextY - 16;   // “teto” do conteúdo antes do footer
 
+  // =========================
+  // Blocos finais ancorados (de baixo pra cima)
+  // =========================
+  const notesH = 70;
+  const totalsW = 220;
+  const totalsH = 84;
+  const gap = 16;
 
- /*
- * BLOCO "Datos del cliente" / "Datos de la empresa" (multi-idioma)
- */
-doc
-  .font("Helvetica-Bold")
-  .fontSize(10)
-  .fillColor("black")
-  .text(t.customerData, 40, 130);
+  const notesY = footerTopY - notesH;               // Observaciones SEMPRE acima do footer
+  const totalsY = notesY - gap - totalsH;           // Totais SEMPRE acima das observaciones
 
-doc
-  .font("Helvetica-Bold")
-  .fontSize(10)
-  .fillColor("black")
-  .text(t.companyData, 320, 130, {
-    width: 205,
-    align: "right",
-  });
+  // =========================
+  // Logo
+  // =========================
+  let logoBuffer: Buffer | null = null;
 
-// ✅ Mesma “régua” pros 2 lados
-const baseY = 160;
-const lineH = 15;
+  if (empresa?.logoPath) {
+    if (empresa.logoPath.startsWith("http")) {
+      logoBuffer = await fetchToBuffer(empresa.logoPath);
+    } else {
+      const localPath = empresa.logoPath.startsWith("/")
+        ? empresa.logoPath
+        : `/${empresa.logoPath}`;
+      logoBuffer = await readPublicAssetToBuffer(localPath);
+    }
+  }
+  if (!logoBuffer) {
+    logoBuffer = await readPublicAssetToBuffer("/logo-nexo.png");
+  }
+  if (!logoBuffer) {
+    const fallbackUrl = new URL("/logo-nexo.png", req.url).toString();
+    logoBuffer = await fetchToBuffer(fallbackUrl);
+  }
 
-// ------------------------
-// Cliente (esquerda)
-// ------------------------
-doc.font("Helvetica").fontSize(10).fillColor("black");
+  const topY = 10;
+  const logoX = x0;
+  const logoY = 10;
 
-let yLeft = baseY;
+  if (logoBuffer) {
+    // Maior e com “fit” (sem estourar)
+    doc.image(logoBuffer, logoX, logoY, { fit: [260, 150] });
+  } else {
+    doc.font("Helvetica-Bold").fontSize(26).fillColor(text).text(empresaNombre, x0, topY + 10);
+  }
 
-doc.text(`Fecha: ${presupuesto.fecha.toLocaleDateString("es-ES")}`, 35, yLeft);
-yLeft += lineH;
+  // =========================
+  // Card azul do título (direita)
+  // =========================
+  const cardW = 210;
+  const cardH = 72;
+  const cardX = x1 - cardW;
+  const cardY = 40;
 
-doc.text(`Cliente: ${presupuesto.cliente?.nombre ?? ""}`, 35, yLeft);
-yLeft += lineH;
+  doc.roundedRect(cardX, cardY, cardW, cardH, 14).fill(card);
+  doc.save();
+  doc.roundedRect(cardX, cardY, cardW, 28, 14).fill(blueDark);
+  doc.restore();
+  doc.rect(cardX, cardY + 14, cardW, 14).fill(blueDark);
 
-if (presupuesto.cliente?.nif) {
-  doc.text(`NIF: ${presupuesto.cliente.nif}`, 35, yLeft);
-  yLeft += lineH;
-}
-if (presupuesto.cliente?.email) {
-  doc.text(`Email: ${presupuesto.cliente.email}`, 35, yLeft);
-  yLeft += lineH;
-}
-if (presupuesto.cliente?.telefono) {
-  doc.text(`Teléfono: ${presupuesto.cliente.telefono}`, 35, yLeft);
-  yLeft += lineH;
-}
-if (presupuesto.cliente?.direccion) {
-  doc.text(`Dirección: ${presupuesto.cliente.direccion}`, 35, yLeft);
-  yLeft += lineH;
-}
+  doc.fillColor("white").font("Helvetica-Bold").fontSize(16).text(t.title, cardX + 18, cardY + 6);
 
-// ------------------------
-// Empresa (direita) - linha por linha (SEM join)
-// ------------------------
-const empresaLines = [
-  empresaNombre,
-  empresa?.direccion || "",
-  `${empresa?.cp ?? ""} ${empresa?.ciudad ?? ""}`.trim(),
-  empresa?.provincia || "",
-  empresa?.nif ? `NIF: ${empresa.nif}` : "",
-  empresa?.telefono ? `Tel: ${empresa.telefono}` : "",
-  empresa?.email || "",
-  empresa?.web || "",
-].filter(Boolean);
-
-empresaLines.forEach((line, i) => {
-  doc.text(line, 350, baseY + i * lineH, {
-    width: 190,
-    align: "right",
-  });
-});
-
-  /*
-   * TABELA DE LÍNEAS
-   */
-  const tableTop = 290;
-
-  // 🔹 CABEÇALHO DA TABELA DE LÍNEAS: fundo verde + texto branco
-  const headerHeight = 20;
-  doc.rect(40, tableTop - 4, 520, headerHeight).fill(accentGreen);
-
-  doc.fontSize(10).fillColor("white");
-  doc.text(t.tableDescription, 45, tableTop);
-  doc.text(t.tableQuantity, 330, tableTop, { width: 40, align: "right" });
-  doc.text(t.tableUnitPrice, 380, tableTop, { width: 70, align: "right" });
-  doc.text(t.tableTotal, 460, tableTop, { width: 95, align: "right" });
-
-
-  // linha depois do cabeçalho (cinza claro)
+  const fechaTxt = formatDateDMY(new Date(presupuesto.fecha));
   doc
-    .moveTo(40, tableTop + headerHeight)
-    .lineTo(555, tableTop + headerHeight)
-    .strokeColor("#E5E7EB")
-    .stroke();
+    .fillColor(text)
+    .font("Helvetica-Bold")
+    .fontSize(11)
+    .text(presupuesto.numero, cardX + 18, cardY + 36);
 
-  // 👇 VOLTA TEXTO PRA PRETO ANTES DAS LINHAS
-  doc.fillColor("black");
+  doc.fillColor(muted).font("Helvetica").fontSize(9).text(`Fecha: ${fechaTxt}`, cardX + 18, cardY + 52);
 
-  let y = tableTop + headerHeight + 8;
+  // =========================
+  // Blocos Cliente (esq) e Empresa (dir)
+  // =========================
+  let currentY = 140;
 
-  // 🔹 LÍNEAS DO PRESUPUESTO
-  presupuesto.lineas.forEach((linea) => {
-    const startY = y;
+  doc.fillColor(text).font("Helvetica-Bold").fontSize(11).text(t.customerLabel, x0, currentY);
+  doc.fillColor(text).font("Helvetica-Bold").fontSize(11).text(empresaNombre, x0 + 280, currentY);
 
-    // monta o texto da descrição para o PDF
-    const descTexto = linea.servicio?.nombre
-      ? `${linea.servicio.nombre}${
-          linea.descripcion ? " – " + linea.descripcion : ""
-        }`
-      : linea.descripcion;
+  currentY += 16;
 
-    // descrição multilinha
-    doc.fontSize(9).fillColor("black").text(descTexto, 40, y, {
-      width: 270,
-      align: "left",
+  // Card cliente (esquerda) — largura menor (não invade empresa)
+  const clienteCardX = x0;
+  const clienteCardY = currentY;
+  const clienteCardW = 260;
+  const clienteCardH = 70;
+
+  doc.roundedRect(clienteCardX, clienteCardY, clienteCardW, clienteCardH, 12).fill(card);
+
+  const cliente = presupuesto.cliente;
+  const cName = cliente?.nombre ?? "—";
+  const cEmail = cliente?.email ?? "";
+  const cTel = cliente?.telefono ?? "";
+  const cNif = cliente?.nif ?? "";
+
+  doc
+    .fillColor(text)
+    .font("Helvetica-Bold")
+    .fontSize(12)
+    .text(cName, clienteCardX + 16, clienteCardY + 14, { width: clienteCardW - 32 });
+
+  let cy = clienteCardY + 34;
+  doc.fillColor(muted).font("Helvetica").fontSize(9);
+
+  if (cEmail) {
+    doc.text(`Email: ${cEmail}`, clienteCardX + 16, cy, { width: clienteCardW - 32 });
+    cy += 12;
+  }
+  if (cTel) {
+    doc.text(`Tel: ${cTel}`, clienteCardX + 16, cy, { width: clienteCardW - 32 });
+    cy += 12;
+  }
+  if (cNif) {
+    doc.text(`NIF: ${cNif}`, clienteCardX + 16, cy, { width: clienteCardW - 32 });
+  }
+
+  // Empresa (direita)
+  const empX = x0 + 280;
+  const empY = clienteCardY + 10;
+
+  doc.fillColor(muted).font("Helvetica").fontSize(9);
+  if (empresaDireccion) doc.text(empresaDireccion, empX, empY);
+  if (empresaCP || empresaCiudad || empresaProvincia) {
+    doc.text(
+      `${empresaCP} ${empresaCiudad}${empresaProvincia ? ", " + empresaProvincia : ""}`,
+      empX,
+      empY + 12
+    );
+  }
+  if (empresaTelefono) doc.text(`Tel: ${empresaTelefono}`, empX, empY + 24);
+  if (empresaEmail) doc.text(empresaEmail, empX, empY + 36);
+  if (empresaWeb) doc.text(empresaWeb, empX, empY + 48);
+  if (empresaNif) doc.text(`CIF: ${empresaNif}`, empX, empY + 60);
+
+  currentY = clienteCardY + clienteCardH + 28;
+
+  // =========================
+  // Tabela — limitar antes do totalsY
+  // =========================
+  const headerH = 30;
+
+  // Colunas calculadas (cabem sempre)
+  const colDescX = x0 + 18;
+  const colDescW = 285;
+
+  const colQtyW = 60;
+  const colUnitW = 90;
+  const colTotalW = 90;
+
+  const colTotalX = x1 - colTotalW;                 // encosta no fim
+  const colUnitX = colTotalX - 14 - colUnitW;       // gap 14
+  const colQtyX = colUnitX - 14 - colQtyW;          // gap 14
+
+
+  // Header azul
+  doc.roundedRect(x0, currentY, contentW, headerH, 14).fill(blue);
+
+  doc.fillColor("white").font("Helvetica-Bold").fontSize(11).text(t.tableDescription, colDescX, currentY + 9, {
+    width: colDescW,
+  });
+
+  doc.fillColor("white").font("Helvetica-Bold").fontSize(11).text(t.tableQuantity, colQtyX, currentY + 6, {
+    width: colQtyW,
+    align: "right",
+  });
+
+  doc.fillColor("white").font("Helvetica-Bold").fontSize(11).text(t.tableUnitPrice, colUnitX, currentY + 6, {
+    width: colUnitW,
+    align: "right",
+  });
+
+  doc.fillColor("white").font("Helvetica-Bold").fontSize(11).text(t.tableTotal, colTotalX, currentY + 6, {
+    width: colTotalW,
+    align: "right",
+  });
+
+  currentY += headerH + 10;
+
+  // Limite da tabela: não pode passar do totalsY - gap
+  const stopTableY = totalsY - 14;
+  const rowH = 42;
+
+  presupuesto.lineas.forEach((linea, idx) => {
+    if (currentY + rowH > stopTableY) return;
+
+    if (idx % 2 === 1) doc.rect(x0, currentY, contentW, rowH).fill(rowAlt);
+
+    const servicio = linea.servicio?.nombre ?? "";
+    const desc = linea.descripcion ?? "";
+
+    doc.fillColor(text).font("Helvetica-Bold").fontSize(11).text(servicio || desc || "—", colDescX, currentY + 10, {
+      width: colDescW,
+      ellipsis: true,
     });
 
-    const descHeight =
-      doc.heightOfString(descTexto, { width: 270, align: "left" }) + 4;
-
-    // demais colunas alinhadas na primeira linha da descrição
-    doc
-      .fontSize(9)
-      .fillColor("black")
-      .text(String(linea.cantidad), 330, startY, {
-        width: 40,
-        align: "right",
-      })
-      .text(linea.precioUnitario.toFixed(2), 380, startY, {
-        width: 70,
-        align: "right",
-      })
-      .text(linea.totalLinea.toFixed(2), 460, startY, {
-        width: 95,
-        align: "right",
+    if (servicio && desc) {
+      doc.fillColor(muted).font("Helvetica").fontSize(9).text(desc, colDescX, currentY + 26, {
+        width: colDescW,
+        ellipsis: true,
       });
+    }
 
-    y = startY + descHeight;
+    doc.fillColor(text).font("Helvetica").fontSize(11).text(String(linea.cantidad ?? 0), colQtyX, currentY + 15, {
+      width: colQtyW,
+      align: "right",
+    });
 
-    doc.moveTo(40, y).lineTo(555, y).strokeColor("#E5E7EB").stroke();
+    doc.fillColor(text).font("Helvetica").fontSize(11).text(formatEuro(linea.precioUnitario ?? 0, idioma), colUnitX, currentY + 15, {
+      width: colUnitW,
+      align: "right",
+    });
 
-    y += 5;
+    doc.fillColor(text).font("Helvetica-Bold").fontSize(11).text(formatEuro(linea.totalLinea ?? 0, idioma), colTotalX, currentY + 15, {
+      width: colTotalW,
+      align: "right",
+    });
+
+    doc.moveTo(x0, currentY + rowH).lineTo(x1, currentY + rowH).strokeColor(border).stroke();
+    currentY += rowH;
   });
 
-  /*
-   * RESUMO COM IVA (Base imponible, IVA %, Total)
-   */
-  const subtotal = presupuesto.subtotal ?? 0;
-  const ivaPorcentaje = presupuesto.ivaPorcentaje ?? 0;
-  const ivaImporte =
-    presupuesto.ivaImporte ?? subtotal * (ivaPorcentaje / 100);
+  // =========================
+  // Totais (card direita) — alinhado
+  // =========================
+  const subtotal = presupuesto.subtotal ?? presupuesto.total ?? 0;
+  const ivaPct = presupuesto.ivaPorcentaje ?? 0;
+  const ivaImporte = presupuesto.ivaImporte ?? 0;
   const total = presupuesto.total ?? subtotal + ivaImporte;
 
-  const summaryTop = y + 10;
+  const totalsX = x1 - totalsW;
 
-  doc
-    .fontSize(10)
-    .fillColor("black")
-    .text(`${t.base}:`, 350, summaryTop, {
-      width: 100,
-      align: "right",
-    })
-    .text(`${subtotal.toFixed(2)} €`, 460, summaryTop, {
-      width: 95,
-      align: "right",
-    });
+  doc.roundedRect(totalsX, totalsY, totalsW, totalsH, 12).fill(card);
 
-  doc
-    .text(`${t.vat} (${ivaPorcentaje.toFixed(2)}%):`, 350, summaryTop + 14, {
-      width: 100,
-      align: "right",
-    })
-    .text(`${ivaImporte.toFixed(2)} €`, 460, summaryTop + 14, {
-      width: 95,
-      align: "right",
-    });
+  // labels esquerda + valores direita (sempre alinhado)
+  doc.fillColor(muted).font("Helvetica").fontSize(9).text(t.base, totalsX + 16, totalsY + 14);
+  doc.fillColor(text).font("Helvetica-Bold").fontSize(10).text(formatEuro(subtotal, idioma), totalsX + 16, totalsY + 14, {
+    width: totalsW - 32,
+    align: "right",
+  });
 
-  doc
-    .fontSize(11)
-    .font("Helvetica-Bold")
-    .text(`${t.totalQuote}:`, 350, summaryTop + 30, {
-      width: 100,
-      align: "right",
-    })
-    .text(`${total.toFixed(2)} €`, 460, summaryTop + 30, {
-      width: 95,
-      align: "right",
-    })
-    .font("Helvetica");
+  doc.fillColor(muted).font("Helvetica").fontSize(9).text(`${t.vat} (${formatEuro(ivaPct, idioma)}%):`, totalsX + 16, totalsY + 34);
+  doc.fillColor(text).font("Helvetica-Bold").fontSize(10).text(formatEuro(ivaImporte, idioma), totalsX + 16, totalsY + 34, {
+    width: totalsW - 32,
+    align: "right",
+  });
 
-  /*
-   * NOTAS / OBSERVACIONES (multi-idioma)
-   */
-  if (presupuesto.notas) {
-    const notasTop = summaryTop + 60;
-    const notasLimpias = presupuesto.notas
-    .replace(/\r\n/g, "\n")  // Windows -> Unix
-    .replace(/\r/g, "")      // remove CR que vira "Ð"
-    .replace(/\u00D0/g, ""); // fallback: remove "Ð" se já tiver vindo gravado
+  doc.moveTo(totalsX + 16, totalsY + 56).lineTo(totalsX + totalsW - 16, totalsY + 56).strokeColor(border).stroke();
 
-    doc
-      .fontSize(10)
-      .fillColor("black")
-      .text(`${t.notes}:`, 40, notasTop)
-      .fontSize(9)
-      .text(notasLimpias, 40, notasTop + 12, { width: 515 });
-      
-  }
+  doc.fillColor(muted).font("Helvetica-Bold").fontSize(10).text(t.totalLabel, totalsX + 16, totalsY + 62);
+  doc.fillColor(blueDark).font("Helvetica-Bold").fontSize(14).text(formatEuro(total, idioma), totalsX + 16, totalsY + 60, {
+    width: totalsW - 32,
+    align: "right",
+  });
+
+  // =========================
+  // Observaciones (full) — SEM banco
+  // =========================
+  const notesText = presupuesto.notas?.trim() ? presupuesto.notas : "—";
+  doc.roundedRect(x0, notesY, contentW, notesH, 12).fill(card);
+
+  doc.fillColor(text).font("Helvetica-Bold").fontSize(11).text(t.notesTitle, x0 + 16, notesY + 14);
+  doc.fillColor(muted).font("Helvetica").fontSize(9).text(notesText, x0 + 16, notesY + 32, {
+    width: contentW - 32,
+    height: notesH - 38,
+    ellipsis: true,
+  });
+
+  // =========================
+  // Footer — SEMPRE na página 1
+  // =========================
+  const footerTextParts: string[] = [];
+  footerTextParts.push(empresaNombre);
+  if (empresaNif) footerTextParts.push(`CIF: ${empresaNif}`);
+  if (empresaDireccion) footerTextParts.push(empresaDireccion);
+  if (empresaCP || empresaCiudad) footerTextParts.push(`${empresaCP} ${empresaCiudad}`.trim());
+  if (empresaTelefono) footerTextParts.push(`Tel: ${empresaTelefono}`);
+  if (empresaWeb) footerTextParts.push(empresaWeb);
+
+  const footerText = footerTextParts.join(" · ");
+
+  doc.fillColor("#9CA3AF").font("Helvetica").fontSize(8).text(footerText, x0, footerTextY, {
+    width: contentW,
+    align: "center",
+  });
 
   doc.end();
 
-  const pdfBuffer = await new Promise<Buffer>((resolve) => {
-    doc.on("end", () => {
-      resolve(Buffer.concat(chunks));
-    });
-  });
+  const pdfBuffer = await pdfBufferPromise;
 
   return new NextResponse(new Uint8Array(pdfBuffer), {
-  status: 200,
-  headers: {
-    "Content-Type": "application/pdf",
-    "Content-Disposition": `inline; filename="documento.pdf"`,
-  },
-});
-
+    status: 200,
+    headers: {
+      "Content-Type": "application/pdf",
+      "Content-Disposition": `inline; filename="presupuesto.pdf"`,
+    },
+  });
 }

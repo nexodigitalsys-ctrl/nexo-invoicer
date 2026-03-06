@@ -234,6 +234,27 @@ export async function eliminarLineaFactura(formData: FormData) {
   redirect(`/facturas/${facturaId}`);
 }
 
+export async function actualizarFechaFactura(formData: FormData) {
+  "use server";
+
+  const facturaIdStr = formData.get("facturaId")?.toString();
+  const fechaStr = formData.get("fecha")?.toString(); // YYYY-MM-DD
+
+  if (!facturaIdStr || !fechaStr) return;
+
+  // Cria Date sem dar “bug” de timezone
+  const nuevaFecha = new Date(`${fechaStr}T00:00:00`);
+  if (Number.isNaN(nuevaFecha.getTime())) return;
+
+  await prisma.factura.update({
+    where: { id: Number(facturaIdStr) },
+    data: { fecha: nuevaFecha },
+  });
+
+  revalidatePath(`/facturas/${facturaIdStr}`);
+}
+
+
 
 // 🧮 Server Action para atualizar o IVA da factura
 export async function actualizarIvaFactura(formData: FormData) {

@@ -7,6 +7,9 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import Link from "next/link";
+import { actualizarFechaFactura } from "./actions";
+
+
 
 import {
   agregarLineaFactura,
@@ -17,6 +20,23 @@ import {
   eliminarLineaFactura,
   actualizarIvaFactura,
 } from "./actions";
+
+const moneyFormatter = new Intl.NumberFormat("es-ES", {
+  useGrouping: true, 
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+
+function formatMoney(value: unknown) {
+  // garante número mesmo se vier string tipo "2304,00"
+  const n =
+    typeof value === "number"
+      ? value
+      : Number(String(value).replace(/\s/g, "").replace(/\./g, "").replace(",", "."));
+
+  return moneyFormatter.format(Number.isFinite(n) ? n : 0);
+}
+
 
 interface PageProps {
   params: Promise<{ id: string }>;
@@ -54,6 +74,36 @@ export default async function FacturaDetallePage({ params }: PageProps) {
   const ivaImporte = factura.ivaImporte ?? 0;
   const total = factura.total ?? 0;
 
+    const formatMoney = (value: number | string) => {
+      const n =
+        typeof value === "number"
+          ? value
+          : Number(String(value).replace(/\./g, "").replace(",", "."));
+
+      return new Intl.NumberFormat("es-ES", {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      }).format(Number.isFinite(n) ? n : 0);
+    };
+
+
+  const formatPercent = (value: number | string) => {
+    const n =
+      typeof value === "number"
+        ? value
+        : Number(String(value).replace(/\./g, "").replace(",", "."));
+
+    return new Intl.NumberFormat("es-ES", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(Number.isFinite(n) ? n : 0);
+  };
+
+  const fechaInput = factura.fecha
+  ? new Date(factura.fecha).toISOString().slice(0, 10)
+  : "";
+
+
   return (
     <div className="space-y-6">
       {/* ✅ HEADER RESPONSIVE */}
@@ -82,6 +132,28 @@ export default async function FacturaDetallePage({ params }: PageProps) {
               </Button>
             </form>
           </div>
+
+          <form action={actualizarFechaFactura} className="flex items-end gap-2 mt-2">
+            <input type="hidden" name="facturaId" value={factura.id} />
+
+            <div className="flex flex-col gap-1">
+              <label className="text-sm text-gray-600">Fecha</label>
+              <input
+                type="date"
+                name="fecha"
+                defaultValue={fechaInput}
+                className="border rounded px-2 py-1"
+              />
+            </div>
+
+            <button
+              type="submit"
+              className="border rounded px-3 py-1 bg-white hover:bg-gray-50"
+            >
+              Guardar fecha
+            </button>
+          </form>
+
 
           <p className="text-sm text-slate-500">
             Cliente: {factura.cliente?.nombre ?? "—"} · Fecha:{" "}
@@ -161,15 +233,17 @@ export default async function FacturaDetallePage({ params }: PageProps) {
           <div className="space-y-1 text-sm text-slate-600">
             <p>
               Base imponible (subtotal):{" "}
-              <span className="font-semibold">{subtotal.toFixed(2)} €</span>
+              <span className="font-semibold">{formatMoney(subtotal)} €</span>
             </p>
             <p>
-              IVA ({ivaPorcentaje.toFixed(2)}%):{" "}
-              <span className="font-semibold">{ivaImporte.toFixed(2)} €</span>
+              IVA ({formatPercent(ivaPorcentaje)}%):{" "}
+              <span className="font-semibold">{formatMoney(ivaImporte)} €</span>
+
             </p>
             <p>
               Total factura:{" "}
-              <span className="font-semibold">{total.toFixed(2)} €</span>
+              <span className="font-semibold">{formatMoney(total)} €</span>
+
             </p>
           </div>
 
@@ -221,7 +295,8 @@ export default async function FacturaDetallePage({ params }: PageProps) {
               <option value="">— Selecciona un servicio —</option>
               {servicios.map((s) => (
                 <option key={s.id} value={s.id}>
-                  {s.nombre} {s.precio ? `(${s.precio.toFixed(2)} €)` : ""}
+                  {s.nombre} {s.precio ? `(${formatMoney(s.precio)} €)` : ""}
+
                 </option>
               ))}
             </select>
@@ -296,6 +371,7 @@ export default async function FacturaDetallePage({ params }: PageProps) {
                       </button>
                     </form>
                   </div>
+                  
 
                   <div className="grid grid-cols-2 gap-3 text-sm">
                     <div>
@@ -304,17 +380,20 @@ export default async function FacturaDetallePage({ params }: PageProps) {
                     </div>
                     <div className="text-right">
                       <p className="text-xs text-slate-500">Precio</p>
-                      <p className="font-medium">{linea.precioUnitario.toFixed(2)} €</p>
+                      <p className="font-medium">{formatMoney(linea.precioUnitario)} €</p>
                     </div>
 
                     <div className="col-span-2 flex items-center justify-between pt-2 border-t">
                       <p className="text-xs text-slate-500">Total línea</p>
-                      <p className="font-semibold">{linea.totalLinea.toFixed(2)} €</p>
+                      <p className="font-semibold">{formatMoney(linea.totalLinea)} €</p>
                     </div>
                   </div>
                 </div>
               ))}
             </div>
+              <div className="text-xs text-red-600">
+ 
+</div>
 
             {/* DESKTOP: table */}
             <div className="hidden md:block">
@@ -335,8 +414,9 @@ export default async function FacturaDetallePage({ params }: PageProps) {
                       <td className="p-2">{linea.servicio?.nombre ?? "-"}</td>
                       <td className="p-2">{linea.descripcion}</td>
                       <td className="p-2 text-right">{linea.cantidad}</td>
-                      <td className="p-2 text-right">{linea.precioUnitario.toFixed(2)}</td>
-                      <td className="p-2 text-right">{linea.totalLinea.toFixed(2)}</td>
+                      <td className="p-2 text-right">{formatMoney(linea.precioUnitario)}</td>
+                      <td className="p-2 text-right">{formatMoney(linea.totalLinea)}</td>
+
                       <td className="p-2 text-right">
                         <form action={eliminarLineaFactura}>
                           <input type="hidden" name="facturaId" value={factura.id} />
