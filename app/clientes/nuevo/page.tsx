@@ -23,6 +23,8 @@ async function crearCliente(formData: FormData) {
   const emailRaw = formData.get("email")?.toString().trim();
   const telefonoRaw = formData.get("telefono")?.toString().trim();
   const direccion = formData.get("direccion")?.toString().trim() || null;
+  const cp = formData.get("cp")?.toString().trim() || null;
+  const ciudad = formData.get("ciudad")?.toString().trim() || null;
   
   
   
@@ -49,6 +51,8 @@ async function crearCliente(formData: FormData) {
       email,
       telefono,
       direccion,
+      cp,
+      ciudad,
     },
   });
 
@@ -115,6 +119,18 @@ export default function NuevoClientePage() {
           name="direccion"
           placeholder="Calle..."
         />
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div className="space-y-2">
+          <Label htmlFor="cp">CP</Label>
+          <Input id="cp" name="cp" placeholder="08193" />
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="ciudad">Ciudad</Label>
+          <Input id="ciudad" name="ciudad" placeholder="Bellaterra" />
+        </div>
       </div>
 
         <div className="flex justify-end gap-3 pt-4">

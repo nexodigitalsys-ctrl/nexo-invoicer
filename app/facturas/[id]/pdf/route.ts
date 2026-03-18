@@ -110,6 +110,10 @@ function dataUrlToBuffer(dataUrl: string): Buffer | null {
   }
 }
 
+function compactLine(value: string) {
+  return value.replace(/\s+/g, " ").trim();
+}
+
 // =========================
 // Route
 // =========================
@@ -276,54 +280,56 @@ export async function GET(
   const clientCardX = x0;
   const clientCardY = currentY + 16;
   const clientCardW = 280; // reduzido p/ não invadir empresa
-  const clientCardH = 80;
+  const clientCardH = 108;
 
   doc.roundedRect(clientCardX, clientCardY, clientCardW, clientCardH, 12).fill(card);
 
   const cliente = factura.cliente;
+  const clienteDireccion = compactLine(cliente?.direccion ?? "");
+  const clienteCityLine = compactLine(`${cliente?.cp ?? ""} ${cliente?.ciudad ?? ""}`);
+  const clienteLines = [
+    cliente?.nif ? `NIF: ${cliente.nif}` : "",
+    clienteDireccion,
+    clienteCityLine,
+    cliente?.telefono ? `Tel: ${cliente.telefono}` : "",
+    cliente?.email ? `Email: ${cliente.email}` : "",
+  ].filter(Boolean);
   let cy = clientCardY + 14;
 
   doc.fillColor(text).font("Helvetica-Bold").fontSize(12).text(cliente?.nombre ?? "—", clientCardX + 16, cy);
   cy += 18;
 
   doc.fillColor(muted).font("Helvetica").fontSize(10);
-  if (cliente?.email) {
-    doc.text(`Email: ${cliente.email}`, clientCardX + 16, cy);
-    cy += 14;
-  }
-  if (cliente?.telefono) {
-    doc.text(`Tel: ${cliente.telefono}`, clientCardX + 16, cy);
-    cy += 14;
-  }
-  if (cliente?.nif) {
-    doc.text(`NIF: ${cliente.nif}`, clientCardX + 16, cy);
-    cy += 14;
+  for (const line of clienteLines) {
+    const lineHeight = doc.heightOfString(line, { width: clientCardW - 32 });
+    doc.text(line, clientCardX + 16, cy, { width: clientCardW - 32 });
+    cy += Math.max(14, lineHeight + 2);
   }
 
   // Empresa (direita) - sem card
   const companyX = x0 + 320;
-  const companyY = currentY + 16;
+  const companyY = currentY + 23;
+  const companyW = x1 - companyX;
+  const cityLine = compactLine(
+    `${empresaCP} ${empresaCiudad}${empresaProvincia ? ", " + empresaProvincia : ""}`
+  );
+  const empresaLines = [
+    empresaNif ? `NIF: ${empresaNif}` : "",
+    compactLine(empresaDireccion),
+    cityLine,
+    empresaTelefono ? `Tel: ${empresaTelefono}` : "",
+    empresaEmail ? `Email: ${empresaEmail}` : "",
+    empresaWeb,
+  ].filter(Boolean);
 
   doc.fillColor(text).font("Helvetica-Bold").fontSize(14).text(empresaNombre, companyX, companyY);
   let ey = companyY + 22;
 
   doc.fillColor(muted).font("Helvetica").fontSize(10);
-  if (empresaDireccion) {
-    doc.text(empresaDireccion, companyX, ey, { width: x1 - companyX });
-    ey += 14;
-  }
-  const cityLine = `${empresaCP} ${empresaCiudad}${empresaProvincia ? ", " + empresaProvincia : ""}`.trim();
-  if (cityLine) {
-    doc.text(cityLine, companyX, ey, { width: x1 - companyX });
-    ey += 14;
-  }
-  if (empresaTelefono) {
-    doc.text(`Tel: ${empresaTelefono}`, companyX, ey);
-    ey += 14;
-  }
-  if (empresaEmail) {
-    doc.text(empresaEmail, companyX, ey);
-    ey += 14;
+  for (const line of empresaLines) {
+    const lineHeight = doc.heightOfString(line, { width: companyW });
+    doc.text(line, companyX, ey, { width: companyW });
+    ey += Math.max(14, lineHeight + 2);
   }
 
   currentY = clientCardY + clientCardH + 26;

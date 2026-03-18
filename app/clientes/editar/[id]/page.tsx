@@ -17,6 +17,8 @@ async function actualizarCliente(formData: FormData) {
   const emailRaw = formData.get("email")?.toString().trim();
   const telefonoRaw = formData.get("telefono")?.toString().trim();
   const direccion = formData.get("direccion")?.toString().trim() || null;
+  const cp = formData.get("cp")?.toString().trim() || null;
+  const ciudad = formData.get("ciudad")?.toString().trim() || null;
   const email = emailRaw || null;
   const telefono = telefonoRaw || null;
 
@@ -35,6 +37,8 @@ async function actualizarCliente(formData: FormData) {
       email,
       telefono,
       direccion,
+      cp,
+      ciudad,
     },
   });
 
@@ -110,6 +114,18 @@ export default async function EditarClientePage({ params }: PageProps) {
           name="direccion"
           defaultValue={cliente.direccion ?? ""}
         />
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div className="space-y-2">
+          <Label htmlFor="cp">CP</Label>
+          <Input id="cp" name="cp" defaultValue={cliente.cp ?? ""} />
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="ciudad">Ciudad</Label>
+          <Input id="ciudad" name="ciudad" defaultValue={cliente.ciudad ?? ""} />
+        </div>
       </div>
 
         <div className="flex justify-end gap-3 pt-4">

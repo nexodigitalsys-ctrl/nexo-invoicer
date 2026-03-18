@@ -50,6 +50,8 @@ model Cliente {
   email        String?
   telefono     String?
   direccion    String?
+  cp           String?
+  ciudad       String?
   createdAt    DateTime      @default(now())
   workspace    Workspace     @relation(fields: [workspaceId], references: [id])
   facturas     Factura[]
