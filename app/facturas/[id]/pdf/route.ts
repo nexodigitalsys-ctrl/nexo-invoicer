@@ -100,6 +100,43 @@ async function readPublicAssetToBuffer(assetPath: string) {
   }
 }
 
+async function fileExists(filePath: string) {
+  try {
+    await readFile(filePath);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function registerUnicodePdfFonts(doc: PDFKit.PDFDocument) {
+  const regularCandidates = [
+    path.join(process.cwd(), "public", "fonts", "arial.ttf"),
+    path.join(process.cwd(), "public", "fonts", "NotoSans-Regular.ttf"),
+    path.join("C:\\Windows\\Fonts", "arial.ttf"),
+  ];
+  const boldCandidates = [
+    path.join(process.cwd(), "public", "fonts", "arialbd.ttf"),
+    path.join(process.cwd(), "public", "fonts", "NotoSans-Bold.ttf"),
+    path.join("C:\\Windows\\Fonts", "arialbd.ttf"),
+  ];
+
+  for (const fontPath of regularCandidates) {
+    if (await fileExists(fontPath)) {
+      doc.registerFont("AppSans", fontPath);
+      for (const boldFontPath of boldCandidates) {
+        if (await fileExists(boldFontPath)) {
+          doc.registerFont("AppSans-Bold", boldFontPath);
+          return true;
+        }
+      }
+      doc.registerFont("AppSans-Bold", fontPath);
+      return true;
+    }
+  }
+  return false;
+}
+
 function dataUrlToBuffer(dataUrl: string): Buffer | null {
   const match = dataUrl.match(/^data:image\/[a-zA-Z0-9.+-]+;base64,(.+)$/);
   if (!match) return null;
@@ -167,6 +204,17 @@ export async function GET(
   const empresaBic = ""; // se você criar no schema depois, conecta aqui
 
   const doc = new PDFDocument({ size: "A4", margin: 40 });
+  const hasUnicodeFonts = await registerUnicodePdfFonts(doc);
+  const originalFont = doc.font.bind(doc);
+  doc.font = ((src: string, ...args: unknown[]) => {
+    if (hasUnicodeFonts && src === "Helvetica") {
+      return originalFont("AppSans", ...(args as []));
+    }
+    if (hasUnicodeFonts && src === "Helvetica-Bold") {
+      return originalFont("AppSans-Bold", ...(args as []));
+    }
+    return originalFont(src, ...(args as []));
+  }) as typeof doc.font;
 
   const chunks: Buffer[] = [];
   doc.on("data", (c: Buffer) => chunks.push(c));
