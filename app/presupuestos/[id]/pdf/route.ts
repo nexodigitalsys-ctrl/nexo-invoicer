@@ -3,6 +3,7 @@ import prisma from "@/lib/prisma";
 import PDFDocument from "pdfkit";
 import { readFile } from "fs/promises";
 import path from "path";
+import { calcularTotalesDocumento } from "@/lib/totals";
 
 // =====================================
 // Textos
@@ -16,6 +17,8 @@ const texts = {
     tableUnitPrice: "Precio unitario",
     tableTotal: "Total",
     notesTitle: "Observaciones",
+    subtotal: "Subtotal:",
+    discount: "Descuento:",
     base: "Base imponible:",
     vat: "IVA",
     totalLabel: "TOTAL (EUR):",
@@ -28,6 +31,8 @@ const texts = {
     tableUnitPrice: "Preu unitari",
     tableTotal: "Total",
     notesTitle: "Observacions",
+    subtotal: "Subtotal:",
+    discount: "Descompte:",
     base: "Base imposable:",
     vat: "IVA",
     totalLabel: "TOTAL (EUR):",
@@ -43,6 +48,21 @@ function formatEuro(value: number, idioma: Idioma): string {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(value);
+}
+
+function formatDiscountLabel(
+  baseLabel: string,
+  descuentoPorcentaje: number,
+  descuentoImporte: number,
+  idioma: Idioma
+) {
+  const parts = [
+    descuentoPorcentaje > 0 ? `${formatEuro(descuentoPorcentaje, idioma)}%` : "",
+    descuentoImporte > 0 ? `${formatEuro(descuentoImporte, idioma)} EUR` : "",
+  ].filter(Boolean);
+
+  if (parts.length === 0) return baseLabel;
+  return `${baseLabel.replace(/:$/, "")} (${parts.join(" + ")}):`;
 }
 
 function formatDateDMY(date: Date): string {
@@ -218,7 +238,8 @@ export async function GET(
   // =========================
   const notesH = 70;
   const totalsW = 220;
-  const totalsH = 84;
+  const totalsH = 112;
+  const totalsExtraBottomH = 6;
   const gap = 16;
 
   const notesY = footerTopY - notesH;               // Observaciones SEMPRE acima do footer
@@ -441,30 +462,56 @@ export async function GET(
   // =========================
   const subtotal = presupuesto.subtotal ?? presupuesto.total ?? 0;
   const ivaPct = presupuesto.ivaPorcentaje ?? 0;
-  const ivaImporte = presupuesto.ivaImporte ?? 0;
-  const total = presupuesto.total ?? subtotal + ivaImporte;
+  const totalesPresupuesto = calcularTotalesDocumento({
+    subtotal,
+    ivaPorcentaje: ivaPct,
+    descuentoPorcentaje: presupuesto.descuentoPorcentaje ?? 0,
+    descuentoImporte: presupuesto.descuentoImporte ?? 0,
+  });
+  const descuentoLabel = formatDiscountLabel(
+    t.discount,
+    presupuesto.descuentoPorcentaje ?? 0,
+    presupuesto.descuentoImporte ?? 0,
+    idioma
+  );
+  const ivaImporte = presupuesto.ivaImporte ?? totalesPresupuesto.ivaImporte;
+  const total = presupuesto.total ?? totalesPresupuesto.total;
 
   const totalsX = x1 - totalsW;
 
-  doc.roundedRect(totalsX, totalsY, totalsW, totalsH, 12).fill(card);
+  doc.roundedRect(totalsX, totalsY, totalsW, totalsH + totalsExtraBottomH, 12).fill(card);
 
   // labels esquerda + valores direita (sempre alinhado)
-  doc.fillColor(muted).font("Helvetica").fontSize(9).text(t.base, totalsX + 16, totalsY + 14);
+  doc.fillColor(muted).font("Helvetica").fontSize(9).text(t.subtotal, totalsX + 16, totalsY + 14);
   doc.fillColor(text).font("Helvetica-Bold").fontSize(10).text(formatEuro(subtotal, idioma), totalsX + 16, totalsY + 14, {
     width: totalsW - 32,
     align: "right",
   });
 
-  doc.fillColor(muted).font("Helvetica").fontSize(9).text(`${t.vat} (${formatEuro(ivaPct, idioma)}%):`, totalsX + 16, totalsY + 34);
-  doc.fillColor(text).font("Helvetica-Bold").fontSize(10).text(formatEuro(ivaImporte, idioma), totalsX + 16, totalsY + 34, {
+  doc.fillColor(muted).font("Helvetica").fontSize(9).text(descuentoLabel, totalsX + 16, totalsY + 34, {
+    width: totalsW - 96,
+  });
+  doc.fillColor(text).font("Helvetica-Bold").fontSize(10).text(`-${formatEuro(totalesPresupuesto.descuentoTotal, idioma)}`, totalsX + 16, totalsY + 34, {
     width: totalsW - 32,
     align: "right",
   });
 
-  doc.moveTo(totalsX + 16, totalsY + 56).lineTo(totalsX + totalsW - 16, totalsY + 56).strokeColor(border).stroke();
+  doc.fillColor(muted).font("Helvetica").fontSize(9).text(t.base, totalsX + 16, totalsY + 54);
+  doc.fillColor(text).font("Helvetica-Bold").fontSize(10).text(formatEuro(totalesPresupuesto.baseImponible, idioma), totalsX + 16, totalsY + 54, {
+    width: totalsW - 32,
+    align: "right",
+  });
 
-  doc.fillColor(muted).font("Helvetica-Bold").fontSize(10).text(t.totalLabel, totalsX + 16, totalsY + 62);
-  doc.fillColor(blueDark).font("Helvetica-Bold").fontSize(14).text(formatEuro(total, idioma), totalsX + 16, totalsY + 60, {
+  doc.fillColor(muted).font("Helvetica").fontSize(9).text(`${t.vat} (${formatEuro(ivaPct, idioma)}%):`, totalsX + 16, totalsY + 74);
+  doc.fillColor(text).font("Helvetica-Bold").fontSize(10).text(formatEuro(ivaImporte, idioma), totalsX + 16, totalsY + 74, {
+    width: totalsW - 32,
+    align: "right",
+  });
+
+  doc.moveTo(totalsX + 16, totalsY + 86).lineTo(totalsX + totalsW - 16, totalsY + 86).strokeColor(border).stroke();
+
+  doc.fillColor(muted).font("Helvetica-Bold").fontSize(10).text(t.totalLabel, totalsX + 16, totalsY + 92);
+  doc.fillColor(blueDark).font("Helvetica-Bold").fontSize(14).text(formatEuro(total, idioma), totalsX + 16, totalsY + 90, {
     width: totalsW - 32,
     align: "right",
   });

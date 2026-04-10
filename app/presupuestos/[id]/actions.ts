@@ -3,9 +3,49 @@
 import prisma from "@/lib/prisma";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
+import { calcularTotalesDocumento, parseFormNumber } from "@/lib/totals";
+import { getCurrentWorkspaceId } from "@/lib/workspace";
 
 
 // 🟡 Server Action: adicionar línea ao presupuesto
+async function recalcularTotalesPresupuesto(
+  presupuestoId: number,
+  ivaPorcentajeOverride?: number
+) {
+  const sumResult = await prisma.presupuestoLinea.aggregate({
+    where: { presupuestoId },
+    _sum: { totalLinea: true },
+  });
+
+  const presupuesto = await prisma.presupuesto.findUnique({
+    where: { id: presupuestoId },
+    select: {
+      ivaPorcentaje: true,
+      descuentoPorcentaje: true,
+      descuentoImporte: true,
+    },
+  });
+
+  const totales = calcularTotalesDocumento({
+    subtotal: sumResult._sum.totalLinea ?? 0,
+    ivaPorcentaje: ivaPorcentajeOverride ?? presupuesto?.ivaPorcentaje ?? 0,
+    descuentoPorcentaje: presupuesto?.descuentoPorcentaje ?? 0,
+    descuentoImporte: presupuesto?.descuentoImporte ?? 0,
+  });
+
+  await prisma.presupuesto.update({
+    where: { id: presupuestoId },
+    data: {
+      subtotal: totales.subtotal,
+      descuentoPorcentaje: totales.descuentoPorcentaje,
+      descuentoImporte: totales.descuentoImporte,
+      ivaPorcentaje: totales.ivaPorcentaje,
+      ivaImporte: totales.ivaImporte,
+      total: totales.total,
+    },
+  });
+}
+
 export async function agregarLineaPresupuesto(formData: FormData) {
   "use server";
 
@@ -59,36 +99,7 @@ export async function agregarLineaPresupuesto(formData: FormData) {
     },
   });
 
-  // 2) recalcula subtotal das linhas
-  const sumResult = await prisma.presupuestoLinea.aggregate({
-    where: { presupuestoId },
-    _sum: {
-      totalLinea: true,
-    },
-  });
-
-  const subtotal = sumResult._sum.totalLinea ?? 0;
-
-  // 3) pega o IVA atual do presupuesto (para respeitar se o usuário mudou)
-  const presupuesto = await prisma.presupuesto.findUnique({
-    where: { id: presupuestoId },
-    select: { ivaPorcentaje: true },
-  });
-
-  const ivaPorcentaje = presupuesto?.ivaPorcentaje ?? 0;
-  const ivaImporte = subtotal * (ivaPorcentaje / 100);
-  const total = subtotal + ivaImporte;
-
-  // 4) atualiza os totais
-  await prisma.presupuesto.update({
-    where: { id: presupuestoId },
-    data: {
-      subtotal,
-      ivaPorcentaje,
-      ivaImporte,
-      total,
-    },
-  });
+  await recalcularTotalesPresupuesto(presupuestoId);
 
   redirect(`/presupuestos/${presupuestoId}`);
 }
@@ -138,6 +149,42 @@ export async function actualizarNumeroPresupuesto(formData: FormData) {
 }
 
 // 🧨 Server Action: eliminar presupuesto completo
+export async function actualizarClientePresupuesto(formData: FormData) {
+  "use server";
+
+  const idRaw = formData.get("presupuestoId")?.toString();
+  const clienteIdRaw = formData.get("clienteId")?.toString();
+
+  if (!idRaw || !clienteIdRaw) return;
+
+  const presupuestoId = Number(idRaw);
+  const clienteId = Number(clienteIdRaw);
+  if (isNaN(presupuestoId) || isNaN(clienteId)) return;
+
+  const workspaceId = await getCurrentWorkspaceId();
+
+  const [presupuesto, cliente] = await Promise.all([
+    prisma.presupuesto.findFirst({
+      where: { id: presupuestoId, workspaceId },
+      select: { id: true },
+    }),
+    prisma.cliente.findFirst({
+      where: { id: clienteId, workspaceId },
+      select: { id: true },
+    }),
+  ]);
+
+  if (!presupuesto || !cliente) return;
+
+  await prisma.presupuesto.update({
+    where: { id: presupuestoId },
+    data: { clienteId },
+  });
+
+  revalidatePath("/presupuestos");
+  revalidatePath(`/presupuestos/${presupuestoId}`);
+}
+
 export async function eliminarPresupuesto(formData: FormData) {
   "use server";
 
@@ -203,32 +250,7 @@ export async function eliminarLineaPresupuesto(formData: FormData) {
     where: { id: lineaId },
   });
 
-  // 2) recalcula subtotal + IVA + total
-  const sumResult = await prisma.presupuestoLinea.aggregate({
-    where: { presupuestoId },
-    _sum: { totalLinea: true },
-  });
-
-  const subtotal = sumResult._sum.totalLinea ?? 0;
-
-  const presupuesto = await prisma.presupuesto.findUnique({
-    where: { id: presupuestoId },
-    select: { ivaPorcentaje: true },
-  });
-
-  const ivaPorcentaje = presupuesto?.ivaPorcentaje ?? 0;
-  const ivaImporte = subtotal * (ivaPorcentaje / 100);
-  const total = subtotal + ivaImporte;
-
-  await prisma.presupuesto.update({
-    where: { id: presupuestoId },
-    data: {
-      subtotal,
-      ivaPorcentaje,
-      ivaImporte,
-      total,
-    },
-  });
+  await recalcularTotalesPresupuesto(presupuestoId);
 
   revalidatePath(`/presupuestos/${presupuestoId}`);
   redirect(`/presupuestos/${presupuestoId}`);
@@ -256,24 +278,41 @@ export async function actualizarIvaPresupuesto(formData: FormData) {
     return;
   }
 
-  const sumResult = await prisma.presupuestoLinea.aggregate({
-    where: { presupuestoId },
-    _sum: { totalLinea: true },
-  });
+  await recalcularTotalesPresupuesto(presupuestoId, ivaPorcentaje);
 
-  const subtotal = sumResult._sum.totalLinea ?? 0;
-  const ivaImporte = subtotal * (ivaPorcentaje / 100);
-  const total = subtotal + ivaImporte;
+  revalidatePath("/presupuestos");
+  revalidatePath(`/presupuestos/${presupuestoId}`);
+}
+
+export async function actualizarDescuentoPresupuesto(formData: FormData) {
+  "use server";
+
+  const idRaw = formData.get("presupuestoId")?.toString();
+  if (!idRaw) return;
+
+  const presupuestoId = Number(idRaw);
+  const descuentoPorcentaje = parseFormNumber(formData.get("descuentoPorcentaje"));
+  const descuentoImporte = parseFormNumber(formData.get("descuentoImporte"));
+
+  if (
+    isNaN(presupuestoId) ||
+    isNaN(descuentoPorcentaje) ||
+    isNaN(descuentoImporte) ||
+    descuentoPorcentaje < 0 ||
+    descuentoImporte < 0
+  ) {
+    return;
+  }
 
   await prisma.presupuesto.update({
     where: { id: presupuestoId },
     data: {
-      subtotal,
-      ivaPorcentaje,
-      ivaImporte,
-      total,
+      descuentoPorcentaje,
+      descuentoImporte,
     },
   });
+
+  await recalcularTotalesPresupuesto(presupuestoId);
 
   revalidatePath("/presupuestos");
   revalidatePath(`/presupuestos/${presupuestoId}`);

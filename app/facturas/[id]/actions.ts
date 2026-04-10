@@ -3,8 +3,45 @@
 import prisma from "@/lib/prisma";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
+import { calcularTotalesDocumento, parseFormNumber } from "@/lib/totals";
+import { getCurrentWorkspaceId } from "@/lib/workspace";
 
 // ⬇️ mover TODAS
+
+async function recalcularTotalesFactura(facturaId: number, ivaPorcentajeOverride?: number) {
+  const sumResult = await prisma.facturaLinea.aggregate({
+    where: { facturaId },
+    _sum: { totalLinea: true },
+  });
+
+  const factura = await prisma.factura.findUnique({
+    where: { id: facturaId },
+    select: {
+      ivaPorcentaje: true,
+      descuentoPorcentaje: true,
+      descuentoImporte: true,
+    },
+  });
+
+  const totales = calcularTotalesDocumento({
+    subtotal: sumResult._sum.totalLinea ?? 0,
+    ivaPorcentaje: ivaPorcentajeOverride ?? factura?.ivaPorcentaje ?? 0,
+    descuentoPorcentaje: factura?.descuentoPorcentaje ?? 0,
+    descuentoImporte: factura?.descuentoImporte ?? 0,
+  });
+
+  await prisma.factura.update({
+    where: { id: facturaId },
+    data: {
+      subtotal: totales.subtotal,
+      descuentoPorcentaje: totales.descuentoPorcentaje,
+      descuentoImporte: totales.descuentoImporte,
+      ivaPorcentaje: totales.ivaPorcentaje,
+      ivaImporte: totales.ivaImporte,
+      total: totales.total,
+    },
+  });
+}
 
 export async function agregarLineaFactura(formData: FormData) {
   "use server";
@@ -58,35 +95,7 @@ export async function agregarLineaFactura(formData: FormData) {
     },
   });
 
-  // 2) recalcula subtotal + IVA + total
-  const sumResult = await prisma.facturaLinea.aggregate({
-    where: { facturaId },
-    _sum: {
-      totalLinea: true,
-    },
-  });
-
-  const subtotal = sumResult._sum.totalLinea ?? 0;
-
-  // pega o IVA atual da factura (para respeitar se o usuário mudou)
-  const factura = await prisma.factura.findUnique({
-    where: { id: facturaId },
-    select: { ivaPorcentaje: true },
-  });
-
-  const ivaPorcentaje = factura?.ivaPorcentaje ?? 0;
-  const ivaImporte = subtotal * (ivaPorcentaje / 100);
-  const total = subtotal + ivaImporte;
-
-  await prisma.factura.update({
-    where: { id: facturaId },
-    data: {
-      subtotal,
-      ivaPorcentaje,
-      ivaImporte,
-      total,
-    },
-  });
+  await recalcularTotalesFactura(facturaId);
 
   revalidatePath("/facturas");
   revalidatePath(`/facturas/${facturaId}`);
@@ -160,6 +169,42 @@ export async function actualizarNotasFactura(formData: FormData) {
 }
 
 // 🧨 Server Action: eliminar factura completa
+export async function actualizarClienteFactura(formData: FormData) {
+  "use server";
+
+  const idRaw = formData.get("facturaId")?.toString();
+  const clienteIdRaw = formData.get("clienteId")?.toString();
+
+  if (!idRaw || !clienteIdRaw) return;
+
+  const facturaId = Number(idRaw);
+  const clienteId = Number(clienteIdRaw);
+  if (isNaN(facturaId) || isNaN(clienteId)) return;
+
+  const workspaceId = await getCurrentWorkspaceId();
+
+  const [factura, cliente] = await Promise.all([
+    prisma.factura.findFirst({
+      where: { id: facturaId, workspaceId },
+      select: { id: true },
+    }),
+    prisma.cliente.findFirst({
+      where: { id: clienteId, workspaceId },
+      select: { id: true },
+    }),
+  ]);
+
+  if (!factura || !cliente) return;
+
+  await prisma.factura.update({
+    where: { id: facturaId },
+    data: { clienteId },
+  });
+
+  revalidatePath("/facturas");
+  revalidatePath(`/facturas/${facturaId}`);
+}
+
 export async function eliminarFactura(formData: FormData) {
   "use server";
 
@@ -203,32 +248,7 @@ export async function eliminarLineaFactura(formData: FormData) {
     where: { id: lineaId },
   });
 
-  // 2) recalcula subtotal + IVA + total
-  const sumResult = await prisma.facturaLinea.aggregate({
-    where: { facturaId },
-    _sum: { totalLinea: true },
-  });
-
-  const subtotal = sumResult._sum.totalLinea ?? 0;
-
-  const factura = await prisma.factura.findUnique({
-    where: { id: facturaId },
-    select: { ivaPorcentaje: true },
-  });
-
-  const ivaPorcentaje = factura?.ivaPorcentaje ?? 0;
-  const ivaImporte = subtotal * (ivaPorcentaje / 100);
-  const total = subtotal + ivaImporte;
-
-  await prisma.factura.update({
-    where: { id: facturaId },
-    data: {
-      subtotal,
-      ivaPorcentaje,
-      ivaImporte,
-      total,
-    },
-  });
+  await recalcularTotalesFactura(facturaId);
 
   revalidatePath(`/facturas/${facturaId}`);
   redirect(`/facturas/${facturaId}`);
@@ -274,24 +294,41 @@ export async function actualizarIvaFactura(formData: FormData) {
   }
 
   // recalcula subtotal com base nas líneas
-  const sumResult = await prisma.facturaLinea.aggregate({
-    where: { facturaId },
-    _sum: { totalLinea: true },
-  });
+  await recalcularTotalesFactura(facturaId, ivaPorcentaje);
 
-  const subtotal = sumResult._sum.totalLinea ?? 0;
-  const ivaImporte = subtotal * (ivaPorcentaje / 100);
-  const total = subtotal + ivaImporte;
+  revalidatePath("/facturas");
+  revalidatePath(`/facturas/${facturaId}`);
+}
+
+export async function actualizarDescuentoFactura(formData: FormData) {
+  "use server";
+
+  const idRaw = formData.get("facturaId")?.toString();
+  if (!idRaw) return;
+
+  const facturaId = Number(idRaw);
+  const descuentoPorcentaje = parseFormNumber(formData.get("descuentoPorcentaje"));
+  const descuentoImporte = parseFormNumber(formData.get("descuentoImporte"));
+
+  if (
+    isNaN(facturaId) ||
+    isNaN(descuentoPorcentaje) ||
+    isNaN(descuentoImporte) ||
+    descuentoPorcentaje < 0 ||
+    descuentoImporte < 0
+  ) {
+    return;
+  }
 
   await prisma.factura.update({
     where: { id: facturaId },
     data: {
-      subtotal,
-      ivaPorcentaje,
-      ivaImporte,
-      total,
+      descuentoPorcentaje,
+      descuentoImporte,
     },
   });
+
+  await recalcularTotalesFactura(facturaId);
 
   revalidatePath("/facturas");
   revalidatePath(`/facturas/${facturaId}`);

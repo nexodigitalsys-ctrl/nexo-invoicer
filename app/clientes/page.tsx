@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 
 import { getCurrentWorkspaceId } from "@/lib/workspace";
+import { eliminarCliente } from "./actions";
 
 export default async function ClientesPage() {
   const workspaceId = await getCurrentWorkspaceId();
@@ -11,6 +12,14 @@ export default async function ClientesPage() {
   const clientes = await prisma.cliente.findMany({
     where: { workspaceId },
     orderBy: { id: "desc" },
+    include: {
+      _count: {
+        select: {
+          facturas: true,
+          presupuestos: true,
+        },
+      },
+    },
   });
 
   return (
@@ -23,7 +32,7 @@ export default async function ClientesPage() {
         </Link>
       </div>
 
-      <ClienteTable clientes={clientes} />
+      <ClienteTable clientes={clientes} eliminarClienteAction={eliminarCliente} />
     </div>
   );
 }

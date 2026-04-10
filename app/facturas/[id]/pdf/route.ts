@@ -10,6 +10,7 @@ import {
   buildVerifactuInputString,
   computeVerifactuHash,
 } from "@/lib/verifactu/hash";
+import { calcularTotalesDocumento } from "@/lib/totals";
 
 // =========================
 // Helpers
@@ -25,6 +26,8 @@ const texts = {
     tableUnitPrice: "Precio unitario",
     tableTotal: "Total",
     base: "Base imponible:",
+    subtotal: "Subtotal:",
+    discount: "Descuento:",
     vat: "IVA",
     totalEur: "TOTAL (EUR):",
     payTitle: "Por favor realizar el pago a la siguiente cuenta bancaria:",
@@ -46,6 +49,8 @@ const texts = {
     tableUnitPrice: "Preu unitari",
     tableTotal: "Total",
     base: "Base imposable:",
+    subtotal: "Subtotal:",
+    discount: "Descompte:",
     vat: "IVA",
     totalEur: "TOTAL (EUR):",
     payTitle: "Si us plau, realitzeu el pagament al següent compte bancari:",
@@ -67,6 +72,21 @@ function formatEuro(amount: number, idioma: Idioma) {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(amount);
+}
+
+function formatDiscountLabel(
+  baseLabel: string,
+  descuentoPorcentaje: number,
+  descuentoImporte: number,
+  idioma: Idioma
+) {
+  const parts = [
+    descuentoPorcentaje > 0 ? `${formatEuro(descuentoPorcentaje, idioma)}%` : "",
+    descuentoImporte > 0 ? `${formatEuro(descuentoImporte, idioma)} EUR` : "",
+  ].filter(Boolean);
+
+  if (parts.length === 0) return baseLabel;
+  return `${baseLabel.replace(/:$/, "")} (${parts.join(" + ")}):`;
 }
 
 function formatDateDMY(date: Date): string {
@@ -418,7 +438,7 @@ export async function GET(
   const huellaH = 12;
   const payCardH = 120;
   const notesCardH = factura.notas ? 80 : 0;
-  const totalsH = 106;
+  const totalsH = 138;
   const bottomReserve = footerH + huellaH + payCardH + notesCardH + totalsH + 24;
 
   const maxY = pageH - bottomReserve;
@@ -480,32 +500,48 @@ export async function GET(
   // =========================
   const subtotal = factura.subtotal ?? factura.total ?? 0;
   const ivaPorcentaje = factura.ivaPorcentaje ?? 0;
-  const ivaImporte = factura.ivaImporte ?? 0;
-  const totalFactura = factura.total ?? subtotal + ivaImporte;
+  const totalesFactura = calcularTotalesDocumento({
+    subtotal,
+    ivaPorcentaje,
+    descuentoPorcentaje: factura.descuentoPorcentaje ?? 0,
+    descuentoImporte: factura.descuentoImporte ?? 0,
+  });
+  const descuentoLabel = formatDiscountLabel(
+    t.discount,
+    factura.descuentoPorcentaje ?? 0,
+    factura.descuentoImporte ?? 0,
+    idioma
+  );
+  const ivaImporte = factura.ivaImporte ?? totalesFactura.ivaImporte;
+  const totalFactura = factura.total ?? totalesFactura.total;
 
   const totalsW = 240;
   const totalsX = x1 - totalsW;
   const totalsY = currentY;
 
-  doc.roundedRect(totalsX, totalsY, totalsW, 92, 12).fill(card);
+  doc.roundedRect(totalsX, totalsY, totalsW, 124, 12).fill(card);
 
   doc.fillColor(muted).font("Helvetica").fontSize(10);
-  doc.text(t.base, totalsX + 16, totalsY + 14);
-  doc.text(`${t.vat} (${formatEuro(ivaPorcentaje, idioma)}%):`, totalsX + 16, totalsY + 34);
+  doc.text(t.subtotal, totalsX + 16, totalsY + 14);
+  doc.text(descuentoLabel, totalsX + 16, totalsY + 34, { width: totalsW - 104 });
+  doc.text(t.base, totalsX + 16, totalsY + 54);
+  doc.text(`${t.vat} (${formatEuro(ivaPorcentaje, idioma)}%):`, totalsX + 16, totalsY + 74);
 
   doc.fillColor(text).font("Helvetica-Bold").fontSize(10);
   doc.text(formatEuro(subtotal, idioma), totalsX, totalsY + 14, { width: totalsW - 16, align: "right" });
-  doc.text(formatEuro(ivaImporte, idioma), totalsX, totalsY + 34, { width: totalsW - 16, align: "right" });
+  doc.text(`-${formatEuro(totalesFactura.descuentoTotal, idioma)}`, totalsX, totalsY + 34, { width: totalsW - 16, align: "right" });
+  doc.text(formatEuro(totalesFactura.baseImponible, idioma), totalsX, totalsY + 54, { width: totalsW - 16, align: "right" });
+  doc.text(formatEuro(ivaImporte, idioma), totalsX, totalsY + 74, { width: totalsW - 16, align: "right" });
 
-  doc.moveTo(totalsX + 16, totalsY + 56).lineTo(totalsX + totalsW - 16, totalsY + 56).strokeColor(border).stroke();
+  doc.moveTo(totalsX + 16, totalsY + 96).lineTo(totalsX + totalsW - 16, totalsY + 96).strokeColor(border).stroke();
 
-  doc.fillColor(muted).font("Helvetica-Bold").fontSize(11).text(t.totalEur, totalsX + 16, totalsY + 64);
-  doc.fillColor(blue).font("Helvetica-Bold").fontSize(14).text(formatEuro(totalFactura, idioma), totalsX, totalsY + 62, {
+  doc.fillColor(muted).font("Helvetica-Bold").fontSize(11).text(t.totalEur, totalsX + 16, totalsY + 104);
+  doc.fillColor(blue).font("Helvetica-Bold").fontSize(14).text(formatEuro(totalFactura, idioma), totalsX, totalsY + 102, {
     width: totalsW - 16,
     align: "right",
   });
 
-  currentY = totalsY + 110;
+  currentY = totalsY + 142;
 
   // =========================
   // Observaciones (se existir)

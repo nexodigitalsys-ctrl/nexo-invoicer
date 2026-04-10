@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import Link from "next/link";
+import { calcularTotalesDocumento } from "@/lib/totals";
 import {
   agregarLineaPresupuesto,
   cambiarEstadoPresupuesto,
@@ -15,6 +16,8 @@ import {
   actualizarNotasPresupuesto,
   eliminarLineaPresupuesto,
   actualizarIvaPresupuesto,
+  actualizarDescuentoPresupuesto,
+  actualizarClientePresupuesto,
 } from "./actions";
 
 interface PageProps {
@@ -45,6 +48,30 @@ export default async function PresupuestoDetallePage({ params }: PageProps) {
     where: { workspaceId, activo: true },
     orderBy: { nombre: "asc" },
   });
+
+  const clientes = await prisma.cliente.findMany({
+    where: { workspaceId },
+    orderBy: { nombre: "asc" },
+    select: { id: true, nombre: true, nif: true },
+  });
+
+  const subtotal = presupuesto.subtotal ?? 0;
+  const descuentoPorcentaje = presupuesto.descuentoPorcentaje ?? 0;
+  const descuentoImporte = presupuesto.descuentoImporte ?? 0;
+  const ivaPorcentaje = presupuesto.ivaPorcentaje ?? 0;
+  const totales = calcularTotalesDocumento({
+    subtotal,
+    ivaPorcentaje,
+    descuentoPorcentaje,
+    descuentoImporte,
+  });
+  const descuentoParts = [
+    descuentoPorcentaje > 0 ? `${descuentoPorcentaje.toFixed(2)}%` : "",
+    descuentoImporte > 0 ? `${descuentoImporte.toFixed(2)} EUR` : "",
+  ].filter(Boolean);
+  const descuentoLabel = descuentoParts.length
+    ? `Descuento (${descuentoParts.join(" + ")}):`
+    : "Descuento:";
 
 
   return (
@@ -139,6 +166,29 @@ export default async function PresupuestoDetallePage({ params }: PageProps) {
       <section className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-white p-6 rounded-xl shadow-sm border">
         <div>
           <h2 className="text-lg font-semibold mb-2">Cliente</h2>
+          <form action={actualizarClientePresupuesto} className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-end">
+            <input type="hidden" name="presupuestoId" value={presupuesto.id} />
+            <div className="flex-1 space-y-1">
+              <Label htmlFor="clienteIdPresupuesto" className="text-xs">
+                Cliente
+              </Label>
+              <select
+                id="clienteIdPresupuesto"
+                name="clienteId"
+                defaultValue={presupuesto.clienteId}
+                className="h-9 w-full rounded-md border border-slate-300 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400"
+              >
+                {clientes.map((cliente) => (
+                  <option key={cliente.id} value={cliente.id}>
+                    {cliente.nombre} {cliente.nif ? `- ${cliente.nif}` : ""}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <Button type="submit" variant="outline" className="h-9 px-3 text-xs">
+              Guardar cliente
+            </Button>
+          </form>
           <p className="font-medium">{presupuesto.cliente?.nombre}</p>
           {presupuesto.cliente?.email && (
             <p className="text-sm text-slate-600">Email: {presupuesto.cliente.email}</p>
@@ -153,11 +203,19 @@ export default async function PresupuestoDetallePage({ params }: PageProps) {
 
           <div className="space-y-1 text-sm text-slate-600">
             <p>
-              Base imponible (subtotal):{" "}
+              Subtotal:{" "}
               <span className="font-semibold">{(presupuesto.subtotal ?? 0).toFixed(2)} €</span>
             </p>
             <p>
-              IVA ({(presupuesto.ivaPorcentaje ?? 0).toFixed(2)}%):{" "}
+              {descuentoLabel}{" "}
+              <span className="font-semibold">-{totales.descuentoTotal.toFixed(2)} EUR</span>
+            </p>
+            <p>
+              Base imponible:{" "}
+              <span className="font-semibold">{totales.baseImponible.toFixed(2)} EUR</span>
+            </p>
+            <p>
+              IVA ({ivaPorcentaje.toFixed(2)}%):{" "}
               <span className="font-semibold">{(presupuesto.ivaImporte ?? 0).toFixed(2)} €</span>
             </p>
             <p>
@@ -167,6 +225,43 @@ export default async function PresupuestoDetallePage({ params }: PageProps) {
           </div>
 
           {/* Alterar IVA */}
+          <form action={actualizarDescuentoPresupuesto} className="flex flex-wrap items-end gap-2 mt-3 text-sm">
+            <input type="hidden" name="presupuestoId" value={presupuesto.id} />
+            <div className="space-y-1">
+              <Label htmlFor="descuentoPorcentaje" className="text-xs">
+                Descuento %
+              </Label>
+              <Input
+                id="descuentoPorcentaje"
+                name="descuentoPorcentaje"
+                type="number"
+                step="0.1"
+                min={0}
+                defaultValue={descuentoPorcentaje}
+                className="h-9 w-28 text-sm"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <Label htmlFor="descuentoImporte" className="text-xs">
+                Descuento EUR
+              </Label>
+              <Input
+                id="descuentoImporte"
+                name="descuentoImporte"
+                type="number"
+                step="0.01"
+                min={0}
+                defaultValue={descuentoImporte}
+                className="h-9 w-32 text-sm"
+              />
+            </div>
+
+            <Button type="submit" variant="outline" className="h-9 px-3 text-xs">
+              Guardar descuento
+            </Button>
+          </form>
+
           <form action={actualizarIvaPresupuesto} className="flex flex-wrap items-end gap-2 mt-3 text-sm">
             <input type="hidden" name="presupuestoId" value={presupuesto.id} />
             <div className="space-y-1">
