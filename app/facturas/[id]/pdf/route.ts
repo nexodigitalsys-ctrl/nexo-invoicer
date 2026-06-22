@@ -409,7 +409,6 @@ export async function GET(
   // - total sempre termina em x1
   // - widths fixas
   const colDescX = x0 + 18;
-  const colDescW = 285;
 
   const colQtyW = 60;
   const colUnitW = 90;
@@ -419,21 +418,28 @@ export async function GET(
   const colUnitX = colTotalX - 14 - colUnitW;       // gap 14
   const colQtyX = colUnitX - 14 - colQtyW;          // gap 14
 
-  // Header azul arredondado
+  const colDescW = colQtyX - colDescX - 12; // nunca invade a coluna "Cantidad"
+
+  // Header azul arredondado (desenhado no topo da tabela e repetido em toda página nova)
   const headerH = 30;
-  doc.roundedRect(x0, currentY, contentW, headerH, 14).fill(blue);
+  function drawItemsHeader(y: number): number {
+    doc.roundedRect(x0, y, contentW, headerH, 14).fill(blue);
 
-  doc.fillColor(white).font("Helvetica-Bold").fontSize(11);
-  doc.text(t.tableDescription, colDescX, currentY + 9, { width: colDescW });
+    doc.fillColor(white).font("Helvetica-Bold").fontSize(11);
+    doc.text(t.tableDescription, colDescX, y + 9, { width: colDescW });
 
-  // “Cantidad” pode quebrar em 2 linhas, igual print
-  doc.text(t.tableQuantity, colQtyX, currentY + 6, { width: colQtyW, align: "center" });
-  doc.text(t.tableUnitPrice, colUnitX, currentY + 6, { width: colUnitW, align: "center" });
-  doc.text(t.tableTotal, colTotalX, currentY + 6, { width: colTotalW, align: "center" });
+    // “Cantidad” pode quebrar em 2 linhas, igual print
+    doc.text(t.tableQuantity, colQtyX, y + 6, { width: colQtyW, align: "center" });
+    doc.text(t.tableUnitPrice, colUnitX, y + 6, { width: colUnitW, align: "center" });
+    doc.text(t.tableTotal, colTotalX, y + 6, { width: colTotalW, align: "center" });
 
-  currentY += headerH + 10;
+    return y + headerH + 10;
+  }
 
-  // Reservas do rodapé para nunca criar página 2
+  currentY = drawItemsHeader(currentY);
+
+  // Reserva usada para decidir se o bloco final (totais/pago/Verifactu/footer)
+  // cabe na página atual ou precisa ir para a próxima.
   const footerH = 34;
   const huellaH = 12;
   const payCardH = 120;
@@ -441,59 +447,102 @@ export async function GET(
   const totalsH = 138;
   const bottomReserve = footerH + huellaH + payCardH + notesCardH + totalsH + 24;
 
-  const maxY = pageH - bottomReserve;
+  const ROW_MIN = 44; // altura de uma linha de 1 linha de descrição (visual idêntico ao anterior)
+  const ROW_PADDING_TOP = 10;
+  const ROW_PADDING_BOTTOM = 10;
+  const ROW_TITLE_SUBTITLE_GAP = 6;
+  const itemsMaxY = pageH - margin; // limite de uma página de itens
 
-  const rowH = 44; // compacto (não cria 2ª página)
+  for (let idx = 0; idx < factura.lineas.length; idx++) {
+    const linea = factura.lineas[idx];
 
-  factura.lineas.forEach((linea, idx) => {
-    if (currentY + rowH > maxY) return; // NÃO cria página 2, só para de render
+    const servicio = linea.servicio?.nombre ?? "";
+    const descRaw = (linea.descripcion ?? "").trim();
+    const desc =
+      descRaw && descRaw !== "Descripción."
+        ? descRaw
+        : linea.servicio?.descripcion ?? "";
+
+    const titleText = servicio || desc || "—";
+    const showSubtitle = Boolean(servicio && desc);
+
+    // Mede a altura real do bloco de descrição com a MESMA fonte/tamanho/largura
+    // que serão usados no desenho, para que a medida bata com o render.
+    doc.font("Helvetica-Bold").fontSize(11);
+    const titleH = doc.heightOfString(titleText, { width: colDescW });
+
+    let subtitleH = 0;
+    if (showSubtitle) {
+      doc.font("Helvetica").fontSize(9);
+      subtitleH = doc.heightOfString(desc, { width: colDescW });
+    }
+
+    const descBlockH =
+      titleH + (showSubtitle ? ROW_TITLE_SUBTITLE_GAP + subtitleH : 0);
+    const rowH = Math.max(
+      ROW_MIN,
+      descBlockH + ROW_PADDING_TOP + ROW_PADDING_BOTTOM
+    );
+
+    if (currentY + rowH > itemsMaxY) {
+      doc.addPage();
+      currentY = drawItemsHeader(margin);
+    }
 
     // alternado
     if (idx % 2 === 1) doc.rect(x0, currentY, contentW, rowH).fill(rowAlt);
 
-    const servicio = linea.servicio?.nombre ?? "";
-    const desc = linea.descripcion ?? "";
-
-    // descrição (2 linhas)
+    // descrição (altura dinâmica, cresce com o conteúdo)
     doc.fillColor(text).font("Helvetica-Bold").fontSize(11);
-    doc.text(servicio || desc || "—", colDescX, currentY + 10, {
+    doc.text(titleText, colDescX, currentY + ROW_PADDING_TOP, {
       width: colDescW,
-      ellipsis: true,
     });
 
-    if (servicio && desc) {
+    if (showSubtitle) {
       doc.fillColor(muted).font("Helvetica").fontSize(9);
-      doc.text(desc, colDescX, currentY + 26, {
-        width: colDescW,
-        ellipsis: true,
-      });
+      doc.text(
+        desc,
+        colDescX,
+        currentY + ROW_PADDING_TOP + titleH + ROW_TITLE_SUBTITLE_GAP,
+        { width: colDescW }
+      );
     }
 
-    // qty / unit / total alinhados (e dentro da margem)
+    // qty / unit / total alinhados no topo da linha (mesmo padding da descrição)
     doc.fillColor(text).font("Helvetica").fontSize(11);
-    doc.text(String(linea.cantidad ?? 0), colQtyX, currentY + 16, {
+    doc.text(String(linea.cantidad ?? 0), colQtyX, currentY + ROW_PADDING_TOP, {
       width: colQtyW,
       align: "center",
     });
 
-    doc.text(formatEuro(linea.precioUnitario ?? 0, idioma), colUnitX, currentY + 16, {
-      width: colUnitW,
-      align: "right",
-    });
+    doc.text(
+      formatEuro(linea.precioUnitario ?? 0, idioma),
+      colUnitX,
+      currentY + ROW_PADDING_TOP,
+      { width: colUnitW, align: "right" }
+    );
 
     doc.font("Helvetica-Bold");
-    doc.text(formatEuro(linea.totalLinea ?? 0, idioma), colTotalX, currentY + 16, {
-      width: colTotalW,
-      align: "right",
-    });
+    doc.text(
+      formatEuro(linea.totalLinea ?? 0, idioma),
+      colTotalX,
+      currentY + ROW_PADDING_TOP,
+      { width: colTotalW, align: "right" }
+    );
 
     // separador
     doc.moveTo(x0, currentY + rowH).lineTo(x1, currentY + rowH).strokeColor(border).stroke();
 
     currentY += rowH;
-  });
+  }
 
   currentY += 18;
+
+  // Se não sobrar espaço para totais/pago/Verifactu/footer, abre nova página
+  if (currentY + bottomReserve > pageH) {
+    doc.addPage();
+    currentY = margin;
+  }
 
   // =========================
   // Totales (caixa direita)
