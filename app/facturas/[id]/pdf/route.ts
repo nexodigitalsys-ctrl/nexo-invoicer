@@ -420,6 +420,44 @@ export async function GET(
 
   const colDescW = colQtyX - colDescX - 12; // nunca invade a coluna "Cantidad"
 
+  // Header compacto (logo + caixa FACTURA + número + fecha), desenhado no topo
+  // de toda página NOVA (2+). A página 1 mantém o header grande + bloco
+  // "Factura a:" (dados das duas partes), que não se repete nas demais páginas.
+  const facturaNumero = factura.numero; // capturado fora do closure (TS não estreita `factura` dentro de função aninhada)
+
+  function drawCompactHeader(): number {
+    const y = 22;
+    const logoH = 34;
+
+    if (logoBuffer) {
+      doc.image(logoBuffer, x0, y, { fit: [110, logoH] });
+    } else {
+      doc.font("Helvetica-Bold").fontSize(13).fillColor(text).text(empresaNombre, x0, y);
+    }
+
+    const infoX = x0 + 150;
+    const infoW = contentW - 150;
+    doc.fillColor(blue).font("Helvetica-Bold").fontSize(12).text(t.invoiceTitle, infoX, y, {
+      width: infoW,
+      align: "right",
+    });
+    doc.fillColor(text).font("Helvetica-Bold").fontSize(10).text(facturaNumero, infoX, y + 16, {
+      width: infoW,
+      align: "right",
+    });
+    doc.fillColor(muted).font("Helvetica").fontSize(9).text(
+      `Fecha: ${new Date(facturaFecha).toLocaleDateString("es-ES")}`,
+      infoX,
+      y + 30,
+      { width: infoW, align: "right" }
+    );
+
+    const lineY = y + logoH + 10;
+    doc.moveTo(x0, lineY).lineTo(x1, lineY).strokeColor(border).stroke();
+
+    return lineY + 14;
+  }
+
   // Header azul arredondado (desenhado no topo da tabela e repetido em toda página nova)
   const headerH = 30;
   function drawItemsHeader(y: number): number {
@@ -486,7 +524,7 @@ export async function GET(
 
     if (currentY + rowH > itemsMaxY) {
       doc.addPage();
-      currentY = drawItemsHeader(margin);
+      currentY = drawItemsHeader(drawCompactHeader());
     }
 
     // alternado
@@ -536,13 +574,21 @@ export async function GET(
     currentY += rowH;
   }
 
-  currentY += 18;
+  currentY += 10;
 
-  // Se não sobrar espaço para totais/pago/Verifactu/footer, abre nova página
-  if (currentY + bottomReserve > pageH) {
+  // Bloco final (totais/notas/pago/Verifactu/footer) sempre ancorado no rodapé,
+  // na MESMA posição vertical, independente de quantos itens couberam na página.
+  const blockStartY = pageH - bottomReserve;
+
+  if (currentY > blockStartY) {
+    // Itens da página atual invadiriam a zona do bloco final -> bloco vai pra
+    // página nova, só com o header compacto (sem cabeçalho de colunas, já que
+    // essa página não tem itens).
     doc.addPage();
-    currentY = margin;
+    drawCompactHeader();
   }
+
+  currentY = blockStartY;
 
   // =========================
   // Totales (caixa direita)
