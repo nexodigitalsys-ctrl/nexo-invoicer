@@ -435,29 +435,63 @@ export async function GET(
       doc.font("Helvetica-Bold").fontSize(13).fillColor(text).text(empresaNombre, x0, y);
     }
 
-    const infoX = x0 + 150;
-    const infoW = contentW - 150;
-    doc.fillColor(blue).font("Helvetica-Bold").fontSize(12).text(t.invoiceTitle, infoX, y, {
-      width: infoW,
-      align: "right",
-    });
-    doc.fillColor(text).font("Helvetica-Bold").fontSize(10).text(facturaNumero, infoX, y + 16, {
-      width: infoW,
-      align: "right",
-    });
+    // Caixa FACTURA (direita)
+    const boxWc = 200, boxHc = 70, boxXc = x1 - boxWc, boxYc = y;
+    doc.roundedRect(boxXc, boxYc, boxWc, boxHc, 10).fill("#EEF2FF");
+    doc.roundedRect(boxXc, boxYc, boxWc, 28, 10).fill(blueDark);
+    doc.rect(boxXc, boxYc + 14, boxWc, 14).fill(blue);
+    doc.fillColor(white).font("Helvetica-Bold").fontSize(13).text(t.invoiceTitle, boxXc + 12, boxYc + 7);
+    doc.fillColor(text).font("Helvetica-Bold").fontSize(10).text(facturaNumero, boxXc + 12, boxYc + 36);
     doc.fillColor(muted).font("Helvetica").fontSize(9).text(
       `Fecha: ${new Date(facturaFecha).toLocaleDateString("es-ES")}`,
-      infoX,
-      y + 30,
-      { width: infoW, align: "right" }
+      boxXc + 12, boxYc + 52
     );
 
-    const lineY = y + logoH + 10;
+    const lineY = y + logoH + 14;
     doc.moveTo(x0, lineY).lineTo(x1, lineY).strokeColor(border).stroke();
+    let cy2 = lineY + 10;
 
-    return lineY + 14;
+    // Bloco "Factura a:" — cliente (esquerda) + empresa (direita)
+    doc.fillColor(text).font("Helvetica-Bold").fontSize(10).text(t.customerLabel, x0, cy2);
+    cy2 += 12;
+    const cardW2 = (contentW - 16) / 2;
+    const cardH2 = 80;
+
+    // card cliente
+    doc.roundedRect(x0, cy2, cardW2, cardH2, 10).fill(card);
+    doc.fillColor(text).font("Helvetica-Bold").fontSize(10).text(cliente?.nombre ?? "—", x0 + 12, cy2 + 10, { width: cardW2 - 24 });
+    const clientLines2 = [
+      cliente?.nif ? `NIF: ${cliente.nif}` : null,
+      cliente?.direccion ?? null,
+      cliente?.cp && cliente?.ciudad ? `${cliente.cp} ${cliente.ciudad}` : null,
+      cliente?.telefono ? `Tel: ${cliente.telefono}` : null,
+      cliente?.email ?? null,
+    ].filter(Boolean) as string[];
+    let cly2 = cy2 + 24;
+    for (const line of clientLines2) {
+      doc.fillColor(muted).font("Helvetica").fontSize(8).text(line, x0 + 12, cly2, { width: cardW2 - 24 });
+      cly2 += 11;
+    }
+
+    // card empresa
+    const empX2 = x0 + cardW2 + 16;
+    doc.roundedRect(empX2, cy2, cardW2, cardH2, 10).fill(card);
+    doc.fillColor(text).font("Helvetica-Bold").fontSize(10).text(empresaNombre, empX2 + 12, cy2 + 10, { width: cardW2 - 24 });
+    const empLines2 = [
+      empresa?.nif ? `CIF: ${empresa.nif}` : null,
+      empresa?.direccion ?? null,
+      empresa?.cp && empresa?.ciudad ? `${empresa.cp} ${empresa.ciudad}` : null,
+      empresa?.telefono ? `Tel: ${empresa.telefono}` : null,
+      empresa?.email ?? null,
+    ].filter(Boolean) as string[];
+    let ely2 = cy2 + 24;
+    for (const line of empLines2) {
+      doc.fillColor(muted).font("Helvetica").fontSize(8).text(line, empX2 + 12, ely2, { width: cardW2 - 24 });
+      ely2 += 11;
+    }
+
+    return cy2 + cardH2 + 14;
   }
-
   // Header azul arredondado (desenhado no topo da tabela e repetido em toda página nova)
   const headerH = 30;
   function drawItemsHeader(y: number): number {
