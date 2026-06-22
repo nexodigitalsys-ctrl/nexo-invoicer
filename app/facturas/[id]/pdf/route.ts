@@ -426,11 +426,11 @@ export async function GET(
   const facturaNumero = factura.numero; // capturado fora do closure (TS não estreita `factura` dentro de função aninhada)
 
   function drawCompactHeader(): number {
-    const y = 22;
-    const logoH = 34;
+    const y = margin;
+    const logoH = logoMaxH;
 
     if (logoBuffer) {
-      doc.image(logoBuffer, x0, y, { fit: [110, logoH] });
+      doc.image(logoBuffer, x0, y, { fit: [logoMaxW, logoH] });
     } else {
       doc.font("Helvetica-Bold").fontSize(13).fillColor(text).text(empresaNombre, x0, y);
     }
