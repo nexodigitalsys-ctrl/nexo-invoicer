@@ -146,6 +146,13 @@ function dataUrlToBuffer(dataUrl: string): Buffer | null {
 // =====================================
 // Route
 // =====================================
+// Força geração sob demanda a cada acesso: sem isso, o Next.js pode tratar
+// esta rota como estática e servir um PDF cacheado/desatualizado mesmo após
+// editar as líneas do presupuesto (lê só do Prisma, não usa cookies/headers/searchParams
+// para sinalizar que é dinâmica).
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -228,22 +235,22 @@ export async function GET(
   const rowAlt = "#F9FAFB";
 
   // =========================
-  // Footer ancorado (SEMPRE pág 1)
+  // Footer + blocos finais (ancorados no rodapé da ÚLTIMA página,
+  // independente de quantas páginas os itens ocuparem)
   // =========================
   const footerTextY = pageH - 52;        // linha do footer
   const footerTopY = footerTextY - 14;   // “teto” do conteúdo antes do footer
 
-  // =========================
-  // Blocos finais ancorados (de baixo pra cima)
-  // =========================
   const notesH = 70;
   const totalsW = 220;
   const totalsH = 112;
   const totalsExtraBottomH = 6;
   const gap = 16;
 
-  const notesY = footerTopY - notesH;               // Observaciones SEMPRE acima do footer
-  const totalsY = notesY - gap - totalsH;           // Totais SEMPRE acima das observaciones
+  // Reserva constante (de baixo pra cima): totais + observaciones + footer.
+  // Usada após desenhar os itens para decidir se o bloco final cabe na
+  // página atual ou precisa ir para uma página nova.
+  const blockStartY = footerTopY - notesH - gap - totalsH;
 
   // =========================
   // Logo
@@ -379,7 +386,6 @@ export async function GET(
 
   // Colunas calculadas (cabem sempre)
   const colDescX = x0 + 18;
-  const colDescW = 285;
 
   const colQtyW = 60;
   const colUnitW = 90;
@@ -389,73 +395,134 @@ export async function GET(
   const colUnitX = colTotalX - 14 - colUnitW;       // gap 14
   const colQtyX = colUnitX - 14 - colQtyW;          // gap 14
 
+  const colDescW = colQtyX - colDescX - 12;         // nunca invade a coluna "Cantidad"
 
-  // Header azul
-  doc.roundedRect(x0, currentY, contentW, headerH, 14).fill(blue);
+  const presupuestoNumero = presupuesto.numero; // capturado fora do closure (TS não estreita `presupuesto` dentro de função aninhada)
 
-  doc.fillColor("white").font("Helvetica-Bold").fontSize(11).text(t.tableDescription, colDescX, currentY + 9, {
-    width: colDescW,
-  });
+  // Header compacto (logo + caixa do título + número + fecha), desenhado no
+  // topo de toda página NOVA (2+). A página 1 mantém o header grande com o
+  // bloco "Presupuesto a:" / dados da empresa, que não se repete nas demais.
+  function drawCompactHeader(): number {
+    const y = margin;
+    const logoH = logoMaxH;
 
-  doc.fillColor("white").font("Helvetica-Bold").fontSize(11).text(t.tableQuantity, colQtyX, currentY + 6, {
-    width: colQtyW,
-    align: "right",
-  });
-
-  doc.fillColor("white").font("Helvetica-Bold").fontSize(11).text(t.tableUnitPrice, colUnitX, currentY + 6, {
-    width: colUnitW,
-    align: "right",
-  });
-
-  doc.fillColor("white").font("Helvetica-Bold").fontSize(11).text(t.tableTotal, colTotalX, currentY + 6, {
-    width: colTotalW,
-    align: "right",
-  });
-
-  currentY += headerH + 10;
-
-  // Limite da tabela: não pode passar do totalsY - gap
-  const stopTableY = totalsY - 14;
-  const rowH = 42;
-
-  presupuesto.lineas.forEach((linea, idx) => {
-    if (currentY + rowH > stopTableY) return;
-
-    if (idx % 2 === 1) doc.rect(x0, currentY, contentW, rowH).fill(rowAlt);
-
-    const servicio = linea.servicio?.nombre ?? "";
-    const desc = linea.descripcion ?? "";
-
-    doc.fillColor(text).font("Helvetica-Bold").fontSize(11).text(servicio || desc || "—", colDescX, currentY + 10, {
-      width: colDescW,
-      ellipsis: true,
-    });
-
-    if (servicio && desc) {
-      doc.fillColor(muted).font("Helvetica").fontSize(9).text(desc, colDescX, currentY + 26, {
-        width: colDescW,
-        ellipsis: true,
-      });
+    if (logoBuffer) {
+      doc.image(logoBuffer, x0, y, { fit: [logoMaxW, logoH] });
+    } else {
+      doc.font("Helvetica-Bold").fontSize(13).fillColor(text).text(empresaNombre, x0, y);
     }
 
-    doc.fillColor(text).font("Helvetica").fontSize(11).text(String(linea.cantidad ?? 0), colQtyX, currentY + 15, {
+    const boxWc = 200, boxHc = 70, boxXc = x1 - boxWc, boxYc = y;
+    doc.roundedRect(boxXc, boxYc, boxWc, boxHc, 10).fill("#EEF2FF");
+    doc.roundedRect(boxXc, boxYc, boxWc, 28, 10).fill(blueDark);
+    doc.rect(boxXc, boxYc + 14, boxWc, 14).fill(blueDark);
+    doc.fillColor("white").font("Helvetica-Bold").fontSize(13).text(t.title, boxXc + 12, boxYc + 7);
+    doc.fillColor(text).font("Helvetica-Bold").fontSize(10).text(presupuestoNumero, boxXc + 12, boxYc + 36);
+    doc.fillColor(muted).font("Helvetica").fontSize(9).text(`Fecha: ${fechaTxt}`, boxXc + 12, boxYc + 52);
+
+    const lineY = y + logoH + 14;
+    doc.moveTo(x0, lineY).lineTo(x1, lineY).strokeColor(border).stroke();
+
+    return lineY + 14;
+  }
+
+  // Header azul (repetido em toda página que contém itens)
+  function drawItemsHeader(y: number): number {
+    doc.roundedRect(x0, y, contentW, headerH, 14).fill(blue);
+
+    doc.fillColor("white").font("Helvetica-Bold").fontSize(11).text(t.tableDescription, colDescX, y + 9, {
+      width: colDescW,
+    });
+
+    doc.fillColor("white").font("Helvetica-Bold").fontSize(11).text(t.tableQuantity, colQtyX, y + 6, {
       width: colQtyW,
       align: "right",
     });
 
-    doc.fillColor(text).font("Helvetica").fontSize(11).text(formatEuro(linea.precioUnitario ?? 0, idioma), colUnitX, currentY + 15, {
+    doc.fillColor("white").font("Helvetica-Bold").fontSize(11).text(t.tableUnitPrice, colUnitX, y + 6, {
       width: colUnitW,
       align: "right",
     });
 
-    doc.fillColor(text).font("Helvetica-Bold").fontSize(11).text(formatEuro(linea.totalLinea ?? 0, idioma), colTotalX, currentY + 15, {
+    doc.fillColor("white").font("Helvetica-Bold").fontSize(11).text(t.tableTotal, colTotalX, y + 6, {
+      width: colTotalW,
+      align: "right",
+    });
+
+    return y + headerH + 10;
+  }
+
+  currentY = drawItemsHeader(currentY);
+
+  const ROW_MIN = 44;
+  const ROW_PADDING_TOP = 10;
+  const ROW_PADDING_BOTTOM = 10;
+  const ROW_TITLE_SUBTITLE_GAP = 6;
+  const itemsMaxY = pageH - margin; // limite de uma página de itens
+
+  for (let idx = 0; idx < presupuesto.lineas.length; idx++) {
+    const linea = presupuesto.lineas[idx];
+    const servicio = linea.servicio?.nombre ?? "";
+    const desc = linea.descripcion ?? "";
+    const titleText = servicio || desc || "—";
+    const showSubtitle = Boolean(servicio && desc);
+
+    doc.font("Helvetica-Bold").fontSize(11);
+    const titleH = doc.heightOfString(titleText, { width: colDescW });
+
+    let subtitleH = 0;
+    if (showSubtitle) {
+      doc.font("Helvetica").fontSize(9);
+      subtitleH = doc.heightOfString(desc, { width: colDescW });
+    }
+
+    const descBlockH = titleH + (showSubtitle ? ROW_TITLE_SUBTITLE_GAP + subtitleH : 0);
+    const rowH = Math.max(ROW_MIN, descBlockH + ROW_PADDING_TOP + ROW_PADDING_BOTTOM);
+
+    if (currentY + rowH > itemsMaxY) {
+      doc.addPage();
+      currentY = drawItemsHeader(drawCompactHeader());
+    }
+
+    if (idx % 2 === 1) doc.rect(x0, currentY, contentW, rowH).fill(rowAlt);
+
+    doc.fillColor(text).font("Helvetica-Bold").fontSize(11);
+    doc.text(titleText, colDescX, currentY + ROW_PADDING_TOP, { width: colDescW });
+
+    if (showSubtitle) {
+      doc.fillColor(muted).font("Helvetica").fontSize(9);
+      doc.text(desc, colDescX, currentY + ROW_PADDING_TOP + titleH + ROW_TITLE_SUBTITLE_GAP, { width: colDescW });
+    }
+
+    doc.fillColor(text).font("Helvetica").fontSize(11).text(String(linea.cantidad ?? 0), colQtyX, currentY + ROW_PADDING_TOP, {
+      width: colQtyW,
+      align: "right",
+    });
+
+    doc.fillColor(text).font("Helvetica").fontSize(11).text(formatEuro(linea.precioUnitario ?? 0, idioma), colUnitX, currentY + ROW_PADDING_TOP, {
+      width: colUnitW,
+      align: "right",
+    });
+
+    doc.fillColor(text).font("Helvetica-Bold").fontSize(11).text(formatEuro(linea.totalLinea ?? 0, idioma), colTotalX, currentY + ROW_PADDING_TOP, {
       width: colTotalW,
       align: "right",
     });
 
     doc.moveTo(x0, currentY + rowH).lineTo(x1, currentY + rowH).strokeColor(border).stroke();
     currentY += rowH;
-  });
+  }
+
+  currentY += 10;
+
+  // Bloco final (totais/observaciones/footer) sempre ancorado no rodapé,
+  // na MESMA posição vertical, independente de quantos itens couberam na página.
+  if (currentY > blockStartY) {
+    doc.addPage();
+    drawCompactHeader();
+  }
+
+  currentY = blockStartY;
 
   // =========================
   // Totais (card direita) — alinhado
@@ -478,6 +545,7 @@ export async function GET(
   const total = presupuesto.total ?? totalesPresupuesto.total;
 
   const totalsX = x1 - totalsW;
+  const totalsY = currentY;
 
   doc.roundedRect(totalsX, totalsY, totalsW, totalsH + totalsExtraBottomH, 12).fill(card);
 
@@ -519,6 +587,7 @@ export async function GET(
   // =========================
   // Observaciones (full) — SEM banco
   // =========================
+  const notesY = totalsY + totalsH + totalsExtraBottomH + gap;
   const notesText = presupuesto.notas?.trim() ? presupuesto.notas : "—";
   doc.roundedRect(x0, notesY, contentW, notesH, 12).fill(card);
 
@@ -530,7 +599,7 @@ export async function GET(
   });
 
   // =========================
-  // Footer — SEMPRE na página 1
+  // Footer — ancorado no rodapé da última página
   // =========================
   const footerTextParts: string[] = [];
   footerTextParts.push(empresaNombre);
@@ -556,6 +625,7 @@ export async function GET(
     headers: {
       "Content-Type": "application/pdf",
       "Content-Disposition": `inline; filename="presupuesto.pdf"`,
+      "Cache-Control": "no-store, max-age=0",
     },
   });
 }

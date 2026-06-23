@@ -174,6 +174,13 @@ function compactLine(value: string) {
 // =========================
 // Route
 // =========================
+// Força geração sob demanda a cada acesso: sem isso, o Next.js pode tratar
+// esta rota como estática e servir um PDF cacheado/desatualizado mesmo após
+// editar os itens da factura (lê só do Prisma, não usa cookies/headers/searchParams
+// para sinalizar que é dinâmica).
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -801,6 +808,7 @@ export async function GET(
     headers: {
       "Content-Type": "application/pdf",
       "Content-Disposition": `inline; filename="documento.pdf"`,
+      "Cache-Control": "no-store, max-age=0",
     },
   });
 }
